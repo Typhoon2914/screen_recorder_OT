@@ -1,3 +1,4 @@
+import { buildFaststartRemuxArgs } from "./ffmpeg_args.js";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
 
@@ -62,11 +63,7 @@ export async function remuxMp4Faststart(inputBlob, onLog) {
 
   await ff.writeFile("in.mp4", await fetchFile(inputBlob));
 
-  await ff.exec([
-    "-i", "in.mp4",
-    "-c", "copy",
-    "out.mp4"
-  ]);
+  await ff.exec(buildFaststartRemuxArgs("in.mp4", "out.mp4"));
 
   const data = await ff.readFile("out.mp4");
   return new Blob([data.buffer], { type: "video/mp4" });
