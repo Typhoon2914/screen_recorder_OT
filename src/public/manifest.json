@@ -14,7 +14,9 @@
   },
   "permissions": [
     "downloads",
-    "tabs"
+    "tabs",
+    "alarms",
+    "storage"
   ],
   "background": {
     "service_worker": "service_worker.js",
