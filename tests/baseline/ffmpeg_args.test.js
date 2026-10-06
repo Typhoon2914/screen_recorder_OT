@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildFaststartRemuxArgs } from "../src/scripts/ffmpeg_args.js";
+import { buildFaststartRemuxArgs } from "../../src/scripts/ffmpeg_args.js";
 
 test("buildFaststartRemuxArgs copies streams and enables MP4 faststart", () => {
   assert.deepEqual(

@@ -28,7 +28,7 @@ The current setup is characterized by automated tests covering:
 - MP4 faststart FFmpeg arguments.
 - A production Vite build.
 
-Run the regression tests plus a production build:
+Baseline tests live under `tests/baseline/` so they can stay green independently of intentionally failing feature tests.\n\nRun the regression tests plus a production build:
 
 ```bash
 npm run test:baseline
