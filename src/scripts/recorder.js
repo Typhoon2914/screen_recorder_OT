@@ -1,4 +1,5 @@
 import { remuxMp4Faststart, ensureFFmpeg } from "./ffmpeg_fix.js";
+import { createRecorderBridge } from "../automation/recorder_bridge.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -28,6 +29,8 @@ let mimeType = "";
 let fileExt = "";
 let startedAt = 0;
 let timerHandle = null;
+let pendingAutomationRequest = null;
+let activeAutomationRecordingId = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -91,7 +94,14 @@ function pickMimePreferMp4() {
   return "video/webm";
 }
 
+function createRecordingId() {
+  if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+  return `automation-${Date.now()}`;
+}
+
 async function startRecording() {
+  const automationRequest = pendingAutomationRequest;
+
   try {
     showMode("live");
     detail.textContent = "Opening chooser…";
@@ -130,6 +140,19 @@ async function startRecording() {
     mediaRecorder.onstop = handleStop;
     mediaRecorder.start();
 
+    if (automationRequest) {
+      activeAutomationRecordingId = createRecordingId();
+      pendingAutomationRequest = null;
+      recorderBridge.clearPendingOccurrence(automationRequest.occurrenceKey);
+
+      recorderBridge.notifyRecordingStarted({
+        recordingId: activeAutomationRecordingId,
+        occurrenceKey: automationRequest.occurrenceKey
+      }).catch((error) => {
+        console.warn("Could not report automation start:", error);
+      });
+    }
+
     startedAt = Date.now();
     clearInterval(timerHandle);
     timerHandle = setInterval(() => {
@@ -139,6 +162,21 @@ async function startRecording() {
     setRecordingUI(true);
   } catch (err) {
     console.error(err);
+
+    if (automationRequest) {
+      pendingAutomationRequest = null;
+      recorderBridge.clearPendingOccurrence(automationRequest.occurrenceKey);
+
+      recorderBridge.notifyAutomationError({
+        reason: err?.name === "NotAllowedError"
+          ? "capture_cancelled"
+          : "capture_failed",
+        message: err?.message || "Could not start screen capture."
+      }).catch((reportError) => {
+        console.warn("Could not report automation error:", reportError);
+      });
+    }
+
     alert("Could not start screen capture.\n" + err.message);
     setRecordingUI(false);
     detail.textContent = "—";
@@ -154,6 +192,14 @@ async function handleStop() {
   preview.srcObject = null;
 
   if (!chunks.length) {
+    if (activeAutomationRecordingId) {
+      recorderBridge.notifyAutomationError({
+        reason: "empty_recording",
+        message: "The automated recording stopped without captured data."
+      }).catch(console.warn);
+      activeAutomationRecordingId = null;
+    }
+
     alert("❌ Nothing was captured.");
     setRecordingUI(false);
     detail.textContent = "—";
@@ -213,12 +259,49 @@ async function handleStop() {
     setTimeout(() => URL.revokeObjectURL(blobURL), 1500);
   };
 
+  if (activeAutomationRecordingId) {
+    const finishedRecordingId = activeAutomationRecordingId;
+    activeAutomationRecordingId = null;
+
+    recorderBridge.notifyRecordingStopped({
+      recordingId: finishedRecordingId
+    }).catch((error) => {
+      console.warn("Could not report automation stop:", error);
+    });
+  }
+
   chunks = [];
 }
 
 function stopRecording() {
   if (mediaRecorder?.state === "recording") mediaRecorder.stop();
 }
+
+const recorderBridge = createRecorderBridge({
+  chromeApi: chrome,
+  onCaptureApprovalRequired(request) {
+    pendingAutomationRequest = request;
+    showMode("live");
+    detail.textContent =
+      "Scheduled recording ready — click Start Recording and approve capture.";
+
+    if (!startBtn.disabled) startBtn.focus();
+  },
+  stopRecording() {
+    stopRecording();
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  recorderBridge.handleCommand(message, sender)
+    .then(sendResponse)
+    .catch((error) => {
+      console.error(error);
+      sendResponse({ ok: false, error: error.message });
+    });
+
+  return true;
+});
 
 startBtn.addEventListener("click", startRecording);
 stopBtn.addEventListener("click", stopRecording);
