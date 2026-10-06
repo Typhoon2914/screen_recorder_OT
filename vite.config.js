@@ -32,6 +32,23 @@ function copyFFmpegCore() {
   };
 }
 
+function copyAutomationModules() {
+  return {
+    name: "copy-automation-modules",
+    closeBundle() {
+      const src = path.resolve("src/automation");
+      const out = path.resolve("dist/automation");
+
+      if (!fs.existsSync(src)) {
+        throw new Error("Missing src/automation");
+      }
+
+      fs.cpSync(src, out, { recursive: true });
+      console.log("✅ copied automation modules");
+    }
+  };
+}
+
 export default defineConfig({
   root: "src",
   publicDir: "public",
@@ -44,5 +61,8 @@ export default defineConfig({
       }
     }
   },
-  plugins: [copyFFmpegCore()]
+  plugins: [
+    copyFFmpegCore(),
+    copyAutomationModules()
+  ]
 });
