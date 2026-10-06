@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="../styles/recorder.css" />
+  <title>Screen Recorder</title>
+</head>
+
+<body>
+  <div class="shell">
+    <header class="header">
+      <div class="brand">
+        <img class="badge" src="../icons/icon48.png" alt="Logo" />
+        <div>
+          <div class="h1">Screen Recorder</div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="pill" id="statusPill">Idle</div>
+        <div class="timer" id="timer">00:00</div>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="panel">
+        <div class="actions">
+          <button class="btn primary" id="startBtn">🎬 Start Recording</button>
+          <button class="btn danger inactive" id="stopBtn" disabled>Stop</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="smallRow">
+          <div class="smallLabel">Format</div>
+          <div class="smallValue" id="formatLabel">—</div>
+        </div>
+
+        <div class="smallRow">
+          <div class="smallLabel">Last file</div>
+          <div class="smallValue" id="meta">—</div>
+        </div>
+
+        <div class="smallRow">
+          <div class="smallLabel">Status</div>
+          <div class="smallValue" id="detail">—</div>
+        </div>
+      </section>
+
+      <section class="panel videoPanel">
+        <div class="previewTop">
+          <h3 id="videoTitle">Live Preview</h3>
+          <div class="metaRight" id="metaRight"></div>
+        </div>
+
+        <div class="videoWrap">
+          <video id="preview" autoplay muted playsinline></video>
+
+          <div id="playbackPane" class="playbackPane hidden">
+            <video id="playbackVideo" controls playsinline></video>
+            <button id="downloadBtn" class="playback-button">⬇️ Download</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="../scripts/recorder.js"></script>
+</body>
+
+</html>

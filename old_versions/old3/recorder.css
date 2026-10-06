@@ -1,0 +1,193 @@
+:root{
+  --bg:#070b14;
+  --stroke: rgba(255,255,255,0.14);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.65);
+  --shadow: 0 20px 60px rgba(0,0,0,0.5);
+  --r: 18px;
+}
+
+*{ box-sizing:border-box; }
+html, body { height:100%; }
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 700px at 10% 10%, #1b3a7a 0%, transparent 55%),
+    radial-gradient(900px 600px at 85% 20%, #7a1b5a 0%, transparent 55%),
+    radial-gradient(900px 600px at 50% 120%, #1b7a6a 0%, transparent 55%),
+    var(--bg);
+}
+
+.shell{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.header{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  gap: 16px;
+  padding: 16px 18px;
+  border:1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+.brand{ display:flex; align-items:center; gap: 12px; }
+.badge{
+  width: 44px; height: 44px;
+  display:grid; place-items:center;
+  border-radius: 14px;
+  border:1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.10);
+  font-size: 18px;
+}
+
+.h1{ font-weight: 820; letter-spacing: .2px; }
+.h2{ margin-top: 3px; color: var(--muted); font-size: 12.8px; }
+
+.right{ display:flex; align-items:center; gap: 10px; }
+.pill{
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.75);
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.timer{
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+  letter-spacing: 0.6px;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns: 360px 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.panel{
+  border:1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05));
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.actions{
+  display:flex;
+  gap: 10px;
+}
+
+.btn{
+  border:0;
+  border-radius: 14px;
+  padding: 12px 12px;
+  font-weight: 850;
+  cursor:pointer;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+.btn:active{ transform: translateY(1px) scale(0.995); }
+.btn:disabled{ opacity: 0.45; cursor:not-allowed; }
+
+.primary{
+  flex: 1;
+  background: linear-gradient(90deg, #5b7cfa, #35d7ff);
+  color: white;
+}
+.danger{
+  width: 120px;
+  background: linear-gradient(90deg, #ff4a6a, #ffb347);
+  color: #16020a;
+}
+.inactive{ opacity: .6; }
+
+.divider{
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+  margin: 14px 0;
+}
+
+.smallRow{ display:flex; justify-content: space-between; gap: 10px; padding: 8px 0; }
+.smallLabel{ color: var(--muted); font-size: 12.5px; }
+.smallValue{ color: rgba(255,255,255,0.85); font-size: 12.5px; text-align:right; }
+
+.videoPanel h3{
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+.previewTop{
+  display:flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.metaRight{
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.videoWrap{
+  position: relative;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  overflow: hidden;
+  background: rgba(0,0,0,0.35);
+  min-height: 520px;
+  display:grid;
+  place-items:center;
+  padding: 10px;
+}
+
+#preview{
+  width: 100%;
+  height: 100%;
+  max-height: 700px;
+  background: black;
+  border-radius: 14px;
+}
+
+.playbackPane{
+  width: 100%;
+  display:flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#playbackVideo{
+  width: 100%;
+  max-height: 700px;
+  background: black;
+  border-radius: 14px;
+}
+
+.playback-button{
+  border:1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.playback-button:active{ transform: translateY(1px) scale(0.995); }
+
+.hidden{ display: none !important; }
+
+@media (max-width: 980px){
+  .grid{ grid-template-columns: 1fr; }
+  .videoWrap{ min-height: 420px; }
+}
