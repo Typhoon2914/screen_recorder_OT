@@ -8,7 +8,8 @@
     "dev": "vite build --watch",
     "test": "node --test",
     "test:watch": "node --test --watch",
-    "test:baseline": "node --test && npm run build"
+    "test:baseline": "node --test tests/baseline/*.test.js && npm run build",
+    "test:automation": "node --test tests/automation/*.test.js"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
