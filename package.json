@@ -9,7 +9,8 @@
     "test": "node --test",
     "test:watch": "node --test --watch",
     "test:baseline": "node --test tests/baseline/*.test.js && npm run build",
-    "test:automation": "node --test tests/automation/*.test.js"
+    "test:automation": "node --test tests/automation/*.test.js",
+    "test:integration": "node --test tests/integration/*.test.js"
   },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
