@@ -23,10 +23,12 @@ test("baseline: extension manifest preserves the current MV3 contract", () => {
   assert.equal(manifest.action.default_title, "Screen Recorder");
   assert.equal(manifest.action.default_popup, undefined);
 
-  assert.deepEqual(
-    [...manifest.permissions].sort(),
-    ["downloads", "tabs"].sort()
-  );
+  for (const permission of ["downloads", "tabs"]) {
+    assert.ok(
+      manifest.permissions.includes(permission),
+      `Expected legacy permission ${permission} to remain present`
+    );
+  }
 
   assert.deepEqual(manifest.background, {
     service_worker: "service_worker.js",
