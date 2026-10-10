@@ -52,19 +52,25 @@ export async function ensureFFmpeg(onLog) {
     })();
   }
 
-  return ffmpegLoadPromise;
+  try {return await ffmpegLoadPromise;}
+  catch(error){ffmpegLoadPromise=null;throw error;}
 }
 
 export async function remuxMp4Faststart(inputBlob, onLog) {
   const ff = await ensureFFmpeg(onLog);
+  return runRemux(ff,await fetchFile(inputBlob));
+}
 
-  try { await ff.deleteFile("in.mp4"); } catch { }
-  try { await ff.deleteFile("out.mp4"); } catch { }
-
-  await ff.writeFile("in.mp4", await fetchFile(inputBlob));
-
-  await ff.exec(buildFaststartRemuxArgs("in.mp4", "out.mp4"));
-
-  const data = await ff.readFile("out.mp4");
-  return new Blob([data.buffer], { type: "video/mp4" });
+export async function runRemux(ff,bytes) {
+  try {
+    await ff.writeFile('in.mp4',bytes);
+    const code=await ff.exec(buildFaststartRemuxArgs('in.mp4','out.mp4'));
+    if(code!==0)throw Error(`FFmpeg exited with code ${code}`);
+    const data=await ff.readFile('out.mp4');
+    if(!data.length)throw Error('FFmpeg produced an empty file');
+    return new Blob([data],{type:'video/mp4'});
+  }finally{
+    try{await ff.deleteFile('in.mp4');}catch{}
+    try{await ff.deleteFile('out.mp4');}catch{}
+  }
 }
