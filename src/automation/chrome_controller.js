@@ -3,6 +3,11 @@ import {
   getOccurrenceKey
 } from "./scheduler.js";
 import {
+  calculateStopDeadline,
+  createRecordingStopCoordinator,
+  validateRecordingDuration
+} from "./recording_duration.js";
+import {
   AUTOMATION_COMMANDS,
   parseAutomationCommand
 } from "./commands.js";
@@ -10,6 +15,8 @@ import {
 export const AUTOMATION_POLL_ALARM = "screen-recorder-automation-poll";
 
 const HANDLED_OCCURRENCES_KEY = "automationHandledOccurrenceKeys";
+const PENDING_RECORDING_KEY = "automationPendingRecording";
+const ACTIVE_RECORDING_KEY = "automationActiveRecording";
 const WEEKDAYS = [
   "Sunday",
   "Monday",
@@ -48,7 +55,8 @@ export function createChromeAutomationController({
   recorderUrl,
   schedules = [],
   schedulesProvider = null,
-  nowProvider = defaultNowProvider
+  nowProvider = defaultNowProvider,
+  nowMsProvider = () => Date.now()
 }) {
   if (!chromeApi) throw new Error("chromeApi is required.");
   if (!recorderUrl) throw new Error("recorderUrl is required.");
@@ -90,6 +98,43 @@ export function createChromeAutomationController({
     return chromeApi.tabs.create({ url: recorderUrl });
   }
 
+  async function loadRecord(key) {
+    const stored = await chromeApi.storage.local.get(key);
+    return stored?.[key] ?? null;
+  }
+
+  async function storeRecord(key, value) {
+    await chromeApi.storage.local.set({ [key]: value });
+  }
+
+  async function checkAutomaticStop() {
+    const active = await loadRecord(ACTIVE_RECORDING_KEY);
+    if (!active) return;
+
+    const coordinator = createRecordingStopCoordinator({
+      recordingId: active.recordingId,
+      startedAtMs: active.startedAtMs,
+      durationMinutes: active.durationMinutes,
+      stopRequested: active.stopRequested
+    });
+    const dueStop = coordinator.poll(nowMsProvider());
+    if (!dueStop) return;
+
+    const command = parseAutomationCommand({
+      type: AUTOMATION_COMMANDS.REQUEST_STOP,
+      reason: dueStop.reason
+    });
+
+    // A failed delivery leaves the persisted deadline available for retry.
+    const reply = await chromeApi.tabs.sendMessage(active.tabId, command);
+    if (reply?.ok === false) {
+      throw new Error("Recorder rejected the automatic stop command.");
+    }
+    await storeRecord(ACTIVE_RECORDING_KEY, {
+      ...active, stopRequested: true
+    });
+  }
+
   async function dispatchRecording(schedule, now, handled) {
     const occurrenceKey = getOccurrenceKey(schedule, now);
     const tab = await openOrFocusRecorder();
@@ -104,7 +149,21 @@ export function createChromeAutomationController({
       occurrenceKey
     });
 
-    await chromeApi.tabs.sendMessage(tab.id, message);
+    const reply = await chromeApi.tabs.sendMessage(tab.id, message);
+    if (reply?.ok === false) {
+      throw new Error("Recorder rejected the scheduled recording request.");
+    }
+
+    // Older schedules without a duration retain their existing behavior.
+    if (schedule.durationMinutes != null) {
+      validateRecordingDuration(schedule.durationMinutes);
+      await storeRecord(PENDING_RECORDING_KEY, {
+        scheduleId: schedule.id,
+        occurrenceKey,
+        durationMinutes: schedule.durationMinutes,
+        tabId: tab.id
+      });
+    }
 
     handled.add(occurrenceKey);
     await persistHandledOccurrences(handled);
@@ -114,6 +173,8 @@ export function createChromeAutomationController({
 
   async function handleAlarm(alarm) {
     if (alarm?.name !== AUTOMATION_POLL_ALARM) return [];
+
+    await checkAutomaticStop();
 
     const now = nowProvider();
     const currentSchedules = schedulesProvider
@@ -135,12 +196,42 @@ export function createChromeAutomationController({
     return dispatched;
   }
 
-  async function handleRuntimeMessage(message) {
+  async function handleRuntimeMessage(message, sender = {}) {
     const command = parseAutomationCommand(message);
 
     switch (command.type) {
-      case AUTOMATION_COMMANDS.RECORDING_STARTED:
-      case AUTOMATION_COMMANDS.RECORDING_STOPPED:
+      case AUTOMATION_COMMANDS.RECORDING_STARTED: {
+        const pending = await loadRecord(PENDING_RECORDING_KEY);
+        if (pending &&
+            pending.occurrenceKey === command.occurrenceKey &&
+            pending.tabId === sender.tab?.id) {
+          const startedAtMs = nowMsProvider();
+          const deadlineMs = calculateStopDeadline(
+            startedAtMs, pending.durationMinutes
+          );
+          await storeRecord(ACTIVE_RECORDING_KEY, {
+            recordingId: command.recordingId,
+            occurrenceKey: pending.occurrenceKey,
+            tabId: pending.tabId,
+            startedAtMs,
+            durationMinutes: pending.durationMinutes,
+            deadlineMs,
+            stopRequested: false
+          });
+          await storeRecord(PENDING_RECORDING_KEY, null);
+        }
+        return { ok: true, type: command.type };
+      }
+
+      case AUTOMATION_COMMANDS.RECORDING_STOPPED: {
+        const active = await loadRecord(ACTIVE_RECORDING_KEY);
+        if (active?.recordingId === command.recordingId &&
+            active.tabId === sender.tab?.id) {
+          await storeRecord(ACTIVE_RECORDING_KEY, null);
+        }
+        return { ok: true, type: command.type };
+      }
+
       case AUTOMATION_COMMANDS.AUTOMATION_ERROR:
         return { ok: true, type: command.type };
 
