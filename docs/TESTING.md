@@ -1,5 +1,13 @@
 # Testing approach
 
+## Experimental branch additions
+
+On `experiment/codex-full-build`, see [acceptance gates](ACCEPTANCE.md),
+[performance evidence](PERFORMANCE.md), and [implementation summary](IMPLEMENTATION_SUMMARY.md).
+`npm run verify` records tests/build/syntax evidence; `npm run test:browser`
+loads the production extension into a dedicated profile with synthetic streams.
+These do not prove real Teams readiness or capture permission.
+
 The project is being developed in this order:
 
 1. **Freeze the current working recorder behavior with characterization/regression tests.**
@@ -23,7 +31,8 @@ The current setup is characterized by automated tests covering:
 - MediaRecorder chunk collection and stop processing.
 - MP4 remux/fallback behavior.
 - Playback after recording.
-- Chrome download flow with `saveAs: true`.
+- Verified automatic Chrome downloads with `saveAs: false`, collision protection,
+  interrupted-download retry and reload recovery (intentional experimental contract change).
 - The existing manual Stop button behavior.
 - MP4 faststart FFmpeg arguments.
 - A production Vite build.
