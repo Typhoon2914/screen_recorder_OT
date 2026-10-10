@@ -1,12 +1,12 @@
 import { createChromeAutomationController } from "./automation/chrome_controller.js";
+import { loadEnabledSchedules } from "./automation/schedule_store.js";
 
 const RECORDER_URL = chrome.runtime.getURL("pages/recorder.html");
-const AUTOMATION_SCHEDULES = [];
 
 const automationController = createChromeAutomationController({
   chromeApi: chrome,
   recorderUrl: RECORDER_URL,
-  schedules: AUTOMATION_SCHEDULES
+  schedulesProvider: () => loadEnabledSchedules(chrome)
 });
 
 async function openOrFocusRecorder() {
