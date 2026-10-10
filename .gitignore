@@ -21,3 +21,6 @@ Thumbs.db
 # Editor settings
 .vscode/
 .idea/
+
+# Isolated browser profiles, generated diagnostics and synthetic recordings
+.test-artifacts/

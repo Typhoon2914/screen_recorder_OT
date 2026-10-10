@@ -57,7 +57,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        recorder: path.resolve(__dirname, "src/pages/recorder.html")
+        recorder: path.resolve(import.meta.dirname, "src/pages/recorder.html")
       }
     }
   },

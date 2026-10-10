@@ -1,0 +1,8 @@
+{
+  "endpoint": "ws://127.0.0.1:4457",
+  "expectedScene": "SyntheticLecture",
+  "outputRoot": "C:\\ScreenRecorderExperiment\\Recordings",
+  "stateDirectory": ".test-artifacts/companion-state",
+  "readyUntil": null,
+  "schedules": []
+}
