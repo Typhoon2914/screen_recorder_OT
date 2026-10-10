@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Screen Recorder",
-  "version": "1.0.0",
+  "name": "Screen Recorder DEV",
+  "version": "1.1.0.0",
   "description": "Records screen and remuxes MP4 on-device for perfect seeking.",
   "action": {
-    "default_title": "Screen Recorder",
+    "default_title": "Screen Recorder DEV",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -42,5 +42,6 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "version_name": "1.1.0-dev.1"
 }
