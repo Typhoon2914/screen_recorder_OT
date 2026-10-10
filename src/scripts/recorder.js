@@ -1,5 +1,8 @@
 import { remuxMp4Faststart, ensureFFmpeg } from "./ffmpeg_fix.js";
 import { createRecorderBridge } from "../automation/recorder_bridge.js";
+import { recordingFilename, createSaveSession, createVerifiedSaver } from "../automation/recording_safety.js";
+import { vault } from "./recording_vault.js";
+import "./schedule_ui.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,6 +34,62 @@ let startedAt = 0;
 let timerHandle = null;
 let pendingAutomationRequest = null;
 let activeAutomationRecordingId = null;
+let armedStream = null;
+let armedScheduleId = null;
+let captureStream = null;
+let playbackURL = null;
+let deadlineTimer = null;
+let recordingTitle = '';
+let recoveryRecord = null;
+let initializationComplete = false;
+let saveFile = createVerifiedSaver(chrome.downloads, {onDownload: persistDownloadId});
+const saveSession = createSaveSession({save: (blob,name)=>saveFile(blob,name),onState:state=>{
+  statusPill.textContent=state;
+  startBtn.disabled=!['idle','saved'].includes(state);
+  $('armBtn').disabled=startBtn.disabled;
+  $('downloadBtn').disabled=state==='saving';
+}});
+
+async function persistDownloadId(downloadId) {
+  if(recoveryRecord){recoveryRecord.downloadId=downloadId;await vault('put',recoveryRecord);}
+}
+
+async function saveFinalized() {
+  try {
+    const item=await saveSession.retry();
+    if(!item)return;
+    detail.textContent=`Saved and verified: ${item.filename}`;
+    downloadBtn.textContent='Saved';downloadBtn.disabled=true;
+    // Save success is independent of history/cleanup failures.
+    try {
+      await vault('delete');recoveryRecord=null;
+      const stored=await chrome.storage.local.get('recordingHistory');
+      const history=Array.isArray(stored.recordingHistory)?stored.recordingHistory:[];
+      await chrome.storage.local.set({recordingHistory:[{id:item.id,filename:item.filename,bytes:item.fileSize,state:'saved',at:new Date().toISOString()},...history].slice(0,100)});
+    }catch(error){detail.textContent+=` (History/recovery cleanup failed: ${error.message})`;}
+  }catch(error){
+    detail.textContent=`Save failed: ${error.message}. Recording retained; retry below.`;
+    downloadBtn.textContent='Retry save';downloadBtn.disabled=false;
+  }
+}
+
+async function armCapture() {
+  if(!initializationComplete)throw Error('Recorder is initializing or another recorder tab owns the session');
+  if(saveSession.protected)throw Error('Save the current recording first');
+  const scheduleId=$('armSchedule').value;
+  if(!scheduleId)throw Error('Choose a schedule to arm');
+  if(!$('readyCheck').checked)throw Error('Confirm the meeting is joined and the shared target is correct');
+  const stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:{echoCancellation:false,noiseSuppression:false}});
+  if(!stream.getVideoTracks().length || !stream.getAudioTracks().length){stream.getTracks().forEach(t=>t.stop());throw Error('Scheduled capture requires video and shared tab audio');}
+  armedStream?.getTracks().forEach(t=>t.stop());
+  armedStream=stream;armedScheduleId=scheduleId;preview.srcObject=stream;
+  detail.textContent='Armed for the selected schedule only. Keep this tab open. Authorization ends when sharing stops.';
+  stream.getVideoTracks()[0].addEventListener('ended',()=>{
+    armedStream=null;armedScheduleId=null;
+    detail.textContent='Capture authorization ended. Arm again before the schedule.';
+    stopRecording();
+  });
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -42,6 +101,8 @@ function fmtTime(ms) {
 }
 
 function setRecordingUI(on) {
+  $('pauseBtn').disabled=!on;
+  $('pauseBtn').textContent='Pause';
   startBtn.disabled = on;
   stopBtn.disabled = !on;
   stopBtn.classList.toggle("inactive", !on);
@@ -84,8 +145,13 @@ function waitForStableDims(track, quietMS = 500) {
 }
 
 function pickMimePreferMp4() {
+  const preferMp4=$('formatChoice').value!=='webm';
+  // Chromium can change codec configuration across pause/resume. avc3 permits
+  // in-band parameter sets; avc1 remains a fallback on older Chrome versions.
+  const resilientMp4='video/mp4;codecs="avc3.42E01E,mp4a.40.2"';
+  if(preferMp4 && MediaRecorder.isTypeSupported(resilientMp4))return resilientMp4;
   const mp4 = 'video/mp4;codecs="avc1.42E01E,mp4a.40.2"';
-  if (MediaRecorder.isTypeSupported(mp4)) return mp4;
+  if (preferMp4 && MediaRecorder.isTypeSupported(mp4)) return mp4;
 
   const webm1 = "video/webm;codecs=vp9,opus";
   const webm2 = "video/webm;codecs=vp8,opus";
@@ -100,17 +166,25 @@ function createRecordingId() {
 }
 
 async function startRecording() {
+  if(!initializationComplete || saveSession.protected)return;
   const automationRequest = pendingAutomationRequest;
 
   try {
+    saveSession.begin();
+    startBtn.disabled=true;
+    recordingTitle=automationRequest?.title || $('recordingTitle').value || '';
+    if(playbackURL){URL.revokeObjectURL(playbackURL);playbackURL=null;}
     showMode("live");
     detail.textContent = "Opening chooser…";
 
     // show chooser immediately
-    const stream = await navigator.mediaDevices.getDisplayMedia({
+    const stream = armedStream || await navigator.mediaDevices.getDisplayMedia({
       video: true,
       audio: { echoCancellation: false, noiseSuppression: false }
     });
+    captureStream=stream;
+    if(!stream.getVideoTracks().some(t=>t.readyState==='live'))throw Error('Capture has no live video track');
+    if(automationRequest && !stream.getAudioTracks().some(t=>t.readyState==='live'))throw Error('Scheduled capture has no live audio track');
 
     mimeType = pickMimePreferMp4();
     fileExt = mimeType.includes("mp4") ? "mp4" : "webm";
@@ -129,6 +203,7 @@ async function startRecording() {
     chunks = [];
 
     mediaRecorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorder.onerror=event=>{detail.textContent=`Capture failed: ${event.error?.message || 'encoder error'}`;stopRecording();};
 
     const actual = mediaRecorder.mimeType || mimeType;
     fileExt = actual.includes("mp4") ? "mp4" : "webm";
@@ -139,6 +214,9 @@ async function startRecording() {
     mediaRecorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     mediaRecorder.onstop = handleStop;
     mediaRecorder.start();
+    if(!stream.getAudioTracks().length)detail.textContent='Recording video only: no shared audio track';
+    const duration=automationRequest?.durationMinutes;
+    if(duration)deadlineTimer=setTimeout(stopRecording,duration*60000);
 
     if (automationRequest) {
       activeAutomationRecordingId = createRecordingId();
@@ -162,6 +240,8 @@ async function startRecording() {
     setRecordingUI(true);
   } catch (err) {
     console.error(err);
+    captureStream?.getTracks().forEach(t=>t.stop());captureStream=null;
+    armedStream=null;armedScheduleId=null;saveSession.cancel();
 
     if (automationRequest) {
       pendingAutomationRequest = null;
@@ -186,10 +266,13 @@ async function startRecording() {
 
 async function handleStop() {
   clearInterval(timerHandle);
+  clearTimeout(deadlineTimer);
+  $('pauseBtn').disabled=true;
 
   const stream = preview.srcObject;
   stream?.getTracks().forEach((t) => t.stop());
   preview.srcObject = null;
+  captureStream=null;armedStream=null;armedScheduleId=null;
 
   if (!chunks.length) {
     if (activeAutomationRecordingId) {
@@ -202,12 +285,15 @@ async function handleStop() {
 
     alert("❌ Nothing was captured.");
     setRecordingUI(false);
-    detail.textContent = "—";
+    saveSession.cancel();
+    detail.textContent = "Nothing was captured; capture must be authorized again.";
     showMode("live");
     return;
   }
 
   setRecordingUI(false);
+  startBtn.disabled=true;
+  statusPill.textContent='processing';
 
   let blob = new Blob(chunks, { type: mimeType });
   const originalMime = mimeType;
@@ -244,6 +330,7 @@ async function handleStop() {
   }
 
   const blobURL = URL.createObjectURL(blob);
+  playbackURL=blobURL;
 
   showMode("playback");
   playbackVideo.src = blobURL;
@@ -253,11 +340,14 @@ async function handleStop() {
   metaRight.textContent = `${mb} MB`;
 
   downloadBtn.disabled = false;
-  downloadBtn.onclick = () => {
-    const filename = `screen_recording_${Date.now()}.${fileExt}`;
-    chrome.downloads.download({ url: blobURL, filename, saveAs: true });
-    setTimeout(() => URL.revokeObjectURL(blobURL), 1500);
-  };
+  const filename = recordingFilename({title:recordingTitle,date:new Date(startedAt),extension:fileExt});
+  saveSession.finalize(blob,filename);
+  recoveryRecord={blob,filename,downloadId:null};
+  try {await vault('put',recoveryRecord);}catch(error){
+    detail.textContent=`Recovery storage unavailable: ${error.message}. Keep this page open until saved.`;
+  }
+  downloadBtn.onclick=saveFinalized;
+  await saveFinalized();
 
   if (activeAutomationRecordingId) {
     const finishedRecordingId = activeAutomationRecordingId;
@@ -274,13 +364,21 @@ async function handleStop() {
 }
 
 function stopRecording() {
+  if (mediaRecorder?.state === 'paused') mediaRecorder.resume();
   if (mediaRecorder?.state === "recording") mediaRecorder.stop();
 }
 
 const recorderBridge = createRecorderBridge({
   chromeApi: chrome,
-  onCaptureApprovalRequired(request) {
+  async onCaptureApprovalRequired(request) {
+    if(!initializationComplete)throw Error('Recorder not ready');
+    if(saveSession.protected)throw Error('Recorder busy or unsaved recording protected');
+    if(armedStream && armedScheduleId!==request.scheduleId)throw Error('Capture is armed for a different schedule');
+    if(pendingAutomationRequest && pendingAutomationRequest.occurrenceKey!==request.occurrenceKey)throw Error('A different scheduled capture is awaiting approval');
     pendingAutomationRequest = request;
+    if(armedStream && armedScheduleId===request.scheduleId && armedStream.getTracks().every(t=>t.readyState==='live')){
+      await startRecording();return;
+    }
     showMode("live");
     detail.textContent =
       "Scheduled recording ready — click Start Recording and approve capture.";
@@ -293,19 +391,49 @@ const recorderBridge = createRecorderBridge({
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if(sender.id!==chrome.runtime.id)return false;
+  if(message.recorderTabId==null)return false;
+  chrome.tabs.getCurrent().then(tab=>{
+    if(tab?.id!==message.recorderTabId)return;
   recorderBridge.handleCommand(message, sender)
     .then(sendResponse)
     .catch((error) => {
       console.error(error);
       sendResponse({ ok: false, error: error.message });
     });
+  });
 
   return true;
 });
 
 startBtn.addEventListener("click", startRecording);
 stopBtn.addEventListener("click", stopRecording);
+$('armBtn').addEventListener('click',()=>armCapture().catch(error=>{detail.textContent=error.message;}));
+$('pauseBtn').addEventListener('click',()=>{
+  if(mediaRecorder?.state==='recording'){mediaRecorder.pause();$('pauseBtn').textContent='Resume';statusPill.textContent='paused';}
+  else if(mediaRecorder?.state==='paused'){mediaRecorder.resume();$('pauseBtn').textContent='Pause';statusPill.textContent='recording';}
+});
+document.addEventListener('keydown',event=>{if(event.altKey && event.shiftKey && event.code==='KeyS')stopRecording();});
+window.addEventListener('beforeunload',event=>{if(saveSession.protected || armedStream){event.preventDefault();event.returnValue='';}});
 
 setRecordingUI(false);
 showMode("live");
 detail.textContent = "—";
+startBtn.disabled=true;
+// Hold a browser-wide lock for this recorder document: a second tab cannot record.
+if(!navigator.locks){detail.textContent='Recorder requires Web Locks support';}
+else navigator.locks.request('screen-recorder-owner',{ifAvailable:true},async lock=>{
+  if(!lock){detail.textContent='Another recorder tab owns this session. Close this tab.';return;}
+  try {
+    recoveryRecord=await vault('get');
+    if(recoveryRecord?.blob?.size){
+      saveFile=createVerifiedSaver(chrome.downloads,{onDownload:persistDownloadId,initialId:recoveryRecord.downloadId});
+      saveSession.begin();saveSession.finalize(recoveryRecord.blob,recoveryRecord.filename);
+      playbackURL=URL.createObjectURL(recoveryRecord.blob);showMode('playback');playbackVideo.src=playbackURL;
+      downloadBtn.onclick=saveFinalized;downloadBtn.textContent='Recover / retry save';
+      detail.textContent='Recovered finalized recording. Verify or retry its save before starting another.';
+    }else startBtn.disabled=false;
+    initializationComplete=true;
+  }catch(error){detail.textContent=`Recovery check failed; recording disabled: ${error.message}`;}
+  await new Promise(()=>{});
+});

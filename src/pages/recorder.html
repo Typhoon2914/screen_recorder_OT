@@ -14,7 +14,7 @@
       <div class="brand">
         <img class="badge" src="../icons/icon48.png" alt="Logo" />
         <div>
-          <div class="h1">Screen Recorder</div>
+          <div class="h1">Screen Recorder · EXPERIMENT</div>
         </div>
       </div>
 
@@ -29,7 +29,18 @@
         <div class="actions">
           <button class="btn primary" id="startBtn">🎬 Start Recording</button>
           <button class="btn danger inactive" id="stopBtn" disabled>Stop</button>
+          <button class="btn" id="pauseBtn" disabled>Pause</button>
         </div>
+        <label>Recording title <input id="recordingTitle" maxlength="200" placeholder="Lecture title (optional)" /></label>
+        <label>Format <select id="formatChoice"><option value="auto">MP4 preferred (automatic fallback)</option><option value="webm">WebM</option></select></label>
+        <p class="notice">Files save automatically to Chrome's download folder. Keep this tab open until Saved. Alt+Shift+S stops recording.</p>
+        <details>
+          <summary>Authorize a future scheduled recording</summary>
+          <p>Open and join the correct meeting yourself. Select that tab and share its audio in the browser picker. This permission lasts only while sharing remains active.</p>
+          <label>Schedule <select id="armSchedule"></select></label>
+          <label><input type="checkbox" id="readyCheck" /> I am joined, past any lobby, and will choose the correct tab with audio.</label>
+          <button class="btn" id="armBtn">Choose capture and arm</button>
+        </details>
 
         <div class="divider"></div>
 
@@ -65,6 +76,26 @@
         </div>
       </section>
     </main>
+    <section class="panel schedulePanel">
+      <h2>Weekly schedules</h2>
+      <p>Local computer time. One recording at a time. Cold unattended capture is not supported by Chrome; arm each occurrence beforehand.</p>
+      <form id="scheduleForm">
+        <input id="scheduleId" type="hidden" />
+        <label>Lecture name <input id="lectureName" required maxlength="200" /></label>
+        <label>Weekday <select id="weekday"><option>Sunday</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></label>
+        <label>Local time <input id="scheduleTime" type="time" required /></label>
+        <label>Duration (minutes) <input id="scheduleDuration" type="number" min="1" max="1440" value="60" required /></label>
+        <label>Meeting URL <input id="targetUrl" type="url" placeholder="https://teams.microsoft.com/…" /></label>
+        <label><input id="scheduleEnabled" type="checkbox" checked /> Enabled</label>
+        <button class="btn primary" type="submit">Save schedule</button>
+        <button class="btn" id="cancelEdit" type="button">Clear form</button>
+      </form>
+      <p id="scheduleStatus" role="status"></p>
+      <div id="scheduleList"></div>
+      <h2>Recording history</h2>
+      <div id="historyList"></div>
+      <h2>Automation diagnostics</h2><p id="automationDiagnostic">No reported failures</p>
+    </section>
   </div>
 
   <script type="module" src="../scripts/recorder.js"></script>

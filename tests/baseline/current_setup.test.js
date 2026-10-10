@@ -19,8 +19,8 @@ test("baseline: extension manifest preserves the current MV3 contract", () => {
   const manifest = readJson("src/public/manifest.json");
 
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.name, "Screen Recorder DEV");
-  assert.equal(manifest.action.default_title, "Screen Recorder DEV");
+  assert.equal(manifest.name, "Screen Recorder EXPERIMENT");
+  assert.equal(manifest.action.default_title, "Screen Recorder EXPERIMENT");
   assert.equal(manifest.version, "1.1.0.0");
   assert.equal(manifest.version_name, "1.1.0-dev.1");
   assert.equal(manifest.action.default_popup, undefined);
@@ -96,6 +96,8 @@ test("baseline: recorder keeps the current MIME preference order", () => {
   const source = read("src/scripts/recorder.js");
 
   const mp4 = source.indexOf('video/mp4;codecs="avc1.42E01E,mp4a.40.2"');
+  const resilientMp4=source.indexOf('video/mp4;codecs="avc3.42E01E,mp4a.40.2"');
+  assert.ok(resilientMp4>=0 && resilientMp4<mp4,'Prefer avc3 for pause/resume configuration changes; keep avc1 fallback');
   const vp9 = source.indexOf("video/webm;codecs=vp9,opus");
   const vp8 = source.indexOf("video/webm;codecs=vp8,opus");
   const genericWebm = source.indexOf('return "video/webm"');
@@ -145,14 +147,17 @@ test("baseline: MP4 output is remuxed and falls back to the original on failure"
   assert.match(source, /blob = new Blob\(chunks, \{ type: originalMime \}\)/);
 });
 
-test("baseline: completed recording switches to playback and downloads with Save As", () => {
+test("baseline: completed recording switches to playback and uses verified automatic saving", () => {
   const source = read("src/scripts/recorder.js");
 
   assert.match(source, /URL\.createObjectURL\(blob\)/);
   assert.match(source, /showMode\("playback"\)/);
   assert.match(source, /playbackVideo\.src = blobURL/);
-  assert.match(source, /chrome\.downloads\.download\(\{ url: blobURL, filename, saveAs: true \}\)/);
-  assert.match(source, /screen_recording_\$\{Date\.now\(\)\}/);
+  assert.match(source, /await saveFinalized\(\)/);
+  assert.match(source, /recordingFilename\(\{title:recordingTitle/);
+  const safety=read('src/automation/recording_safety.js');
+  assert.match(safety,/saveAs:false,conflictAction:'uniquify'/);
+  assert.match(safety,/await waitForDownload\(downloads,pendingId\)/);
 });
 
 test("baseline: stopping through the UI only stops when MediaRecorder is recording", () => {

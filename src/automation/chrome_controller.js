@@ -60,6 +60,7 @@ export function createChromeAutomationController({
 }) {
   if (!chromeApi) throw new Error("chromeApi is required.");
   if (!recorderUrl) throw new Error("recorderUrl is required.");
+  let alarmQueue=Promise.resolve();
 
   async function ensurePollingAlarm() {
     await chromeApi.alarms.create(
@@ -77,7 +78,7 @@ export function createChromeAutomationController({
 
   async function persistHandledOccurrences(handled) {
     await chromeApi.storage.local.set({
-      [HANDLED_OCCURRENCES_KEY]: [...handled]
+      [HANDLED_OCCURRENCES_KEY]: [...handled].slice(-1000)
     });
   }
 
@@ -136,6 +137,7 @@ export function createChromeAutomationController({
   }
 
   async function dispatchRecording(schedule, now, handled) {
+    if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
     const occurrenceKey = getOccurrenceKey(schedule, now);
     const tab = await openOrFocusRecorder();
 
@@ -146,13 +148,11 @@ export function createChromeAutomationController({
     const message = parseAutomationCommand({
       type: AUTOMATION_COMMANDS.REQUEST_RECORDING,
       scheduleId: schedule.id,
-      occurrenceKey
+      occurrenceKey,
+      ...(schedule.title!=null?{title:schedule.title}:{}),
+      ...(schedule.durationMinutes!=null?{durationMinutes:schedule.durationMinutes}:{}),
+      ...(schedule.targetUrl?{targetUrl:schedule.targetUrl}:{})
     });
-
-    const reply = await chromeApi.tabs.sendMessage(tab.id, message);
-    if (reply?.ok === false) {
-      throw new Error("Recorder rejected the scheduled recording request.");
-    }
 
     // Older schedules without a duration retain their existing behavior.
     if (schedule.durationMinutes != null) {
@@ -161,8 +161,17 @@ export function createChromeAutomationController({
         scheduleId: schedule.id,
         occurrenceKey,
         durationMinutes: schedule.durationMinutes,
-        tabId: tab.id
+        tabId: tab.id,
+        requestedAtMs: nowMsProvider()
       });
+    }
+
+    try {
+      const reply=await chromeApi.tabs.sendMessage(tab.id,message);
+      if(reply?.ok===false)throw Error(`Recorder rejected the scheduled recording request: ${reply.error || 'not ready'}`);
+    }catch(error){
+      if(schedule.durationMinutes!=null)await storeRecord(PENDING_RECORDING_KEY,null);
+      throw error;
     }
 
     handled.add(occurrenceKey);
@@ -171,7 +180,7 @@ export function createChromeAutomationController({
     return { tabId: tab.id, occurrenceKey };
   }
 
-  async function handleAlarm(alarm) {
+  async function processAlarm(alarm) {
     if (alarm?.name !== AUTOMATION_POLL_ALARM) return [];
 
     await checkAutomaticStop();
@@ -188,12 +197,34 @@ export function createChromeAutomationController({
     const dispatched = [];
 
     for (const schedule of due) {
+      if(await loadRecord(ACTIVE_RECORDING_KEY)){
+        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'blocked',message:'Overlapping schedule deferred: another recording is active. It will expire after its launch window.'});
+        break;
+      }
+      const pending=await loadRecord(PENDING_RECORDING_KEY);
+      if(pending && nowMsProvider()-(pending.requestedAtMs || 0)<120000)break;
+      if(pending)await storeRecord(PENDING_RECORDING_KEY,null);
       dispatched.push(
         await dispatchRecording(schedule, now, handled)
       );
     }
 
     return dispatched;
+  }
+
+  function handleAlarm(alarm){
+    const result=alarmQueue.then(()=>processAlarm(alarm));
+    alarmQueue=result.catch(()=>{});return result;
+  }
+
+  async function handleRecorderClosed(tabId){
+    for(const key of [ACTIVE_RECORDING_KEY,PENDING_RECORDING_KEY]){
+      const record=await loadRecord(key);
+      if(record?.tabId===tabId){
+        await storeRecord(key,null);
+        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'failed',message:'Recorder tab closed. Live recording data may be lost; reopen to recover finalized data.'});
+      }
+    }
   }
 
   async function handleRuntimeMessage(message, sender = {}) {
@@ -242,6 +273,7 @@ export function createChromeAutomationController({
 
   return {
     ensurePollingAlarm,
+    handleRecorderClosed,
     handleAlarm,
     handleRuntimeMessage
   };

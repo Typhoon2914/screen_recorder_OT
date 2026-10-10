@@ -28,7 +28,8 @@ export function createRecorderBridge({
         }
 
         pendingOccurrenceKey = command.occurrenceKey;
-        await onCaptureApprovalRequired(command);
+        try {await onCaptureApprovalRequired(command);}
+        catch(error){pendingOccurrenceKey=null;throw error;}
         return { ok: true, awaitingCaptureApproval: true };
 
       case AUTOMATION_COMMANDS.REQUEST_STOP:

@@ -1,4 +1,5 @@
 export const AUTOMATION_SCHEDULES_KEY = "automationSchedules";
+import {validateRecordingDuration} from './recording_duration.js';
 
 const WEEKDAYS = new Set([
   "Sunday",
@@ -52,6 +53,12 @@ export function validateScheduleConfig(schedule) {
     throw new Error("Schedule enabled must be a boolean.");
   }
 
+  if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
+  if(schedule.title!=null && (typeof schedule.title!=='string' || schedule.title.length>200))throw Error('Invalid lecture title');
+  if(schedule.targetUrl){
+    const url=new URL(schedule.targetUrl);
+    if(url.protocol!=='https:' || url.username || url.password)throw Error('Target must be an HTTPS URL without credentials');
+  }
   return schedule;
 }
 

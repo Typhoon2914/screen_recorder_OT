@@ -259,3 +259,15 @@ body {
     min-height: 420px;
   }
 }
+/* Experimental controls retain the original recording layout. */
+label { display: block; margin: 12px 0; }
+input:not([type=checkbox]), select { display:block; width:100%; padding:9px; margin-top:5px; color:inherit; background:#192431; border:1px solid #637287; border-radius:6px; box-sizing:border-box; }
+details, .notice { font-size:14px; line-height:1.6; margin-top:16px; }
+.schedulePanel { margin-top:20px; padding:24px; }
+#scheduleForm { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; }
+.scheduleRow { border-top:1px solid #637287; padding:16px 0; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+.scheduleRow span { flex:1; min-width:220px; }
+#scheduleStatus { color:#fbc77b; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+body { background-attachment:fixed; }
+#historyList, #detail { overflow-wrap:anywhere; }
