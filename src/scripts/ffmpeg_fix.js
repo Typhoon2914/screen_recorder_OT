@@ -58,10 +58,11 @@ export async function ensureFFmpeg(onLog) {
 
 export async function remuxMp4Faststart(inputBlob, onLog) {
   const ff = await ensureFFmpeg(onLog);
-  return runRemux(ff,await fetchFile(inputBlob));
+  try{return await runRemux(ff,await fetchFile(inputBlob),{terminate:true});}
+  finally{ffmpegInstance=null;ffmpegLoadPromise=null;}
 }
 
-export async function runRemux(ff,bytes) {
+export async function runRemux(ff,bytes,{terminate=false}={}) {
   try {
     await ff.writeFile('in.mp4',bytes);
     const code=await ff.exec(buildFaststartRemuxArgs('in.mp4','out.mp4'));
@@ -72,5 +73,6 @@ export async function runRemux(ff,bytes) {
   }finally{
     try{await ff.deleteFile('in.mp4');}catch{}
     try{await ff.deleteFile('out.mp4');}catch{}
+    if(terminate)ff.terminate();
   }
 }

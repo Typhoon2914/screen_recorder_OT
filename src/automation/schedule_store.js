@@ -54,6 +54,7 @@ export function validateScheduleConfig(schedule) {
   }
 
   if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
+  if(schedule.durationMinutes>1440)throw Error('Duration must not exceed 1440 minutes');
   if(schedule.title!=null && (typeof schedule.title!=='string' || schedule.title.length>200))throw Error('Invalid lecture title');
   if(schedule.targetUrl){
     const url=new URL(schedule.targetUrl);
@@ -129,4 +130,11 @@ export async function setScheduleEnabled(chromeApi, scheduleId, enabled) {
   );
 
   return saveSchedules(chromeApi, updated);
+}
+
+// Extension documents share this origin-wide lock. Always re-read inside it,
+// so editing one schedule cannot overwrite concurrent changes to another.
+export async function updateSchedules(chromeApi,mutate,locks=globalThis.navigator?.locks){
+  if(!locks)throw Error('Schedule editing requires Web Locks support');
+  return locks.request('screen-recorder-schedules',async()=>saveSchedules(chromeApi,mutate(await loadSchedules(chromeApi))));
 }

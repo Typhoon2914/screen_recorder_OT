@@ -1,4 +1,4 @@
-import {loadSchedules,saveSchedules} from '../automation/schedule_store.js';
+import {loadSchedules,updateSchedules} from '../automation/schedule_store.js';
 import {getNextRun} from '../automation/scheduler.js';
 const $=id=>document.getElementById(id);
 let schedules=[];
@@ -23,10 +23,10 @@ async function render(){
       $('scheduleStatus').textContent=s.weekdays.length>1?'Editing preserves the existing weekdays; changing weekday replaces them.':'';
       $('weekday').dataset.original=s.weekdays[0];
     }),button(s.enabled?'Disable':'Enable',async()=>{
-      await saveSchedules(chrome,schedules.map(item=>item.id===s.id?{...item,enabled:!item.enabled}:item));await render();
+      await updateSchedules(chrome,items=>items.map(item=>item.id===s.id?{...item,enabled:!item.enabled}:item));await render();
     }),button('Delete',async()=>{
       if(!confirm(`Delete schedule “${s.title || s.id}”?`))return;
-      await saveSchedules(chrome,schedules.filter(item=>item.id!==s.id));await render();
+      await updateSchedules(chrome,items=>items.filter(item=>item.id!==s.id));await render();
     }));
     if(s.targetUrl)row.append(button('Open target',()=>chrome.tabs.create({url:s.targetUrl})));
     $('scheduleList').append(row);
@@ -44,7 +44,7 @@ $('scheduleForm').addEventListener('submit',async event=>{
     const id=$('scheduleId').value || crypto.randomUUID();
     const existing=schedules.find(s=>s.id===id);
     const schedule={...existing,id,title:$('lectureName').value.trim(),weekdays:existing && $('weekday').value===$('weekday').dataset.original?existing.weekdays:[$('weekday').value],time:$('scheduleTime').value,durationMinutes:Number($('scheduleDuration').value),targetUrl:$('targetUrl').value.trim(),enabled:$('scheduleEnabled').checked,launchWindowSeconds:120};
-    await saveSchedules(chrome,[...schedules.filter(s=>s.id!==id),schedule]);
+    await updateSchedules(chrome,items=>[...items.filter(s=>s.id!==id),schedule]);
     $('scheduleForm').reset();$('scheduleId').value='';await render();$('scheduleStatus').textContent='Schedule saved';
   }catch(error){report(error);}
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { recordingFilename, createSaveSession, waitForDownload } from '../../src/automation/recording_safety.js';
+import { recordingFilename, createSaveSession, waitForDownload, createVerifiedSaver } from '../../src/automation/recording_safety.js';
 
 test('filenames use local time, sanitize Windows characters and preserve a unique suffix', () => {
   const name = recordingFilename({title:' CON: lecture / algebra? ', date:new Date(2026,9,11,21,0), id:'abc-123', extension:'mp4'});
@@ -42,4 +42,11 @@ test('interrupted downloads and missing files are not successful saves', async()
 test('in-progress timeout does not permit a duplicate retry download', async()=>{
   const f=downloadsFixture({id:1,state:'in_progress'});
   await assert.rejects(waitForDownload(f.api,1,{timeoutMs:10}),/still pending/);assert.equal(f.listeners.size,0);
+});
+test('retry replaces a completed zero-byte download instead of looping on it',async()=>{
+  const f=downloadsFixture({id:2,state:'complete',exists:true,fileSize:20});let calls=0;
+  f.api.search=async({id})=>[{id,state:'complete',exists:true,fileSize:id===1?0:20}];
+  f.api.download=async()=>{calls++;return 2;};
+  const save=createVerifiedSaver(f.api,{initialId:1});
+  await save(new Blob(['media']),'video.webm');assert.equal(calls,1);
 });

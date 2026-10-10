@@ -30,3 +30,16 @@ test('closing the recording tab clears stale active state and reports failure',a
   assert.equal(h.state.automationActiveRecording,null);
   assert.match(h.state.automationDiagnostic.message,/closed/);
 });
+test('recorder reload clears stale active state without erasing a fresh pending dispatch',async()=>{
+  const h=fixture();await h.controller.handleAlarm({name:AUTOMATION_POLL_ALARM});
+  h.state.automationPendingRecording={tabId:1,occurrenceKey:'new'};
+  await h.controller.handleRecorderClosed(1,{includePending:false});
+  assert.equal(h.state.automationActiveRecording,null);assert.equal(h.state.automationPendingRecording.occurrenceKey,'new');
+});
+test('terminal recorder error clears only that tab active state',async()=>{
+  const h=fixture();await h.controller.handleAlarm({name:AUTOMATION_POLL_ALARM});
+  await h.controller.handleRuntimeMessage({type:'AUTOMATION_ERROR',reason:'empty_recording',message:'No captured data'},{tab:{id:99}});
+  assert.equal(h.state.automationActiveRecording.recordingId,'r1');
+  await h.controller.handleRuntimeMessage({type:'AUTOMATION_ERROR',reason:'empty_recording',message:'No captured data'},{tab:{id:1}});
+  assert.equal(h.state.automationActiveRecording,null);
+});

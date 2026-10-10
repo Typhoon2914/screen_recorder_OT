@@ -61,6 +61,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if(message.recorderTabId!=null)return false;
   if(sender.id!==chrome.runtime.id)return false;
+  if(message.type==='RECORDER_DOCUMENT_READY'){
+    if(sender.tab?.url!==RECORDER_URL)return false;
+    automationController.handleRecorderClosed(sender.tab.id,{includePending:false})
+      .then(()=>sendResponse({ok:true})).catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
   automationController.handleRuntimeMessage(message, sender)
     .then(sendResponse)
     .catch((error) => {

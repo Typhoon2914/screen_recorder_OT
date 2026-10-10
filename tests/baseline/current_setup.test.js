@@ -88,7 +88,7 @@ test("baseline: recording starts through getDisplayMedia with video and capture 
   assert.match(source, /navigator\.mediaDevices\.getDisplayMedia\(/);
   assert.match(source, /video:\s*true/);
   assert.match(source, /audio:\s*\{\s*echoCancellation:\s*false,\s*noiseSuppression:\s*false\s*\}/s);
-  assert.match(source, /new MediaRecorder\(stream, \{ mimeType \}\)/);
+  assert.match(source, /new MediaRecorder\(stream, recorderOptions\(mimeType/);
   assert.match(source, /mediaRecorder\.start\(\)/);
 });
 
@@ -113,7 +113,7 @@ test("baseline: recording waits for capture dimensions to settle before MediaRec
 
   const delay = source.indexOf("await sleep(1000)");
   const stable = source.indexOf("await waitForStableDims(track)");
-  const recorder = source.indexOf("new MediaRecorder(stream, { mimeType })");
+  const recorder = source.indexOf("new MediaRecorder(stream, recorderOptions(mimeType");
 
   assert.ok(delay >= 0);
   assert.ok(stable > delay);

@@ -33,6 +33,8 @@
         </div>
         <label>Recording title <input id="recordingTitle" maxlength="200" placeholder="Lecture title (optional)" /></label>
         <label>Format <select id="formatChoice"><option value="auto">MP4 preferred (automatic fallback)</option><option value="webm">WebM</option></select></label>
+        <label>Quality <select id="quality"><option value="economy">Economy · 1 Mbps</option><option value="standard" selected>Standard · 2.5 Mbps</option><option value="high">High · 5 Mbps</option></select></label>
+        <label><input id="includeAudio" type="checkbox" checked /> Include shared audio (required for scheduled recordings)</label>
         <p class="notice">Files save automatically to Chrome's download folder. Keep this tab open until Saved. Alt+Shift+S stops recording.</p>
         <details>
           <summary>Authorize a future scheduled recording</summary>
@@ -40,6 +42,7 @@
           <label>Schedule <select id="armSchedule"></select></label>
           <label><input type="checkbox" id="readyCheck" /> I am joined, past any lobby, and will choose the correct tab with audio.</label>
           <button class="btn" id="armBtn">Choose capture and arm</button>
+          <button class="btn" id="disarmBtn">Disarm</button>
         </details>
 
         <div class="divider"></div>

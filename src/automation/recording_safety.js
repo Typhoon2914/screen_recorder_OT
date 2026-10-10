@@ -67,7 +67,7 @@ export function createVerifiedSaver(downloads,{onDownload=async()=>{},initialId=
   return async(blob,filename)=>{
     if(pendingId!==null){
       const [old]=await downloads.search({id:pendingId});
-      if(!old || old.state==='interrupted' || (old.state==='complete' && old.exists===false))pendingId=null;
+      if(!old || old.state==='interrupted' || (old.state==='complete' && (old.exists===false || !(old.fileSize>0))))pendingId=null;
     }
     if(pendingId===null){
       if(!url)url=URL.createObjectURL(blob);

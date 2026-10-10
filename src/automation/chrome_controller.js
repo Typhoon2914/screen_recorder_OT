@@ -13,6 +13,7 @@ import {
 } from "./commands.js";
 
 export const AUTOMATION_POLL_ALARM = "screen-recorder-automation-poll";
+import {prepareTarget} from './target_readiness.js';
 
 const HANDLED_OCCURRENCES_KEY = "automationHandledOccurrenceKeys";
 const PENDING_RECORDING_KEY = "automationPendingRecording";
@@ -138,6 +139,13 @@ export function createChromeAutomationController({
 
   async function dispatchRecording(schedule, now, handled) {
     if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
+    if(schedule.targetUrl){
+      const remembered=await loadRecord('automationTargetTabs') || {};
+      const previous=remembered[schedule.id];
+      const target=await prepareTarget(chromeApi.tabs,schedule.targetUrl,previous?.url===schedule.targetUrl?previous.tabId:null);
+      if(target.tabId!=null)await storeRecord('automationTargetTabs',{...remembered,[schedule.id]:{url:schedule.targetUrl,tabId:target.tabId}});
+      if(!target.ready)throw Error(`Capture target is not ready: ${target.reason}. Login, lobby and meeting admission require user verification.`);
+    }
     const occurrenceKey = getOccurrenceKey(schedule, now);
     const tab = await openOrFocusRecorder();
 
@@ -217,12 +225,12 @@ export function createChromeAutomationController({
     alarmQueue=result.catch(()=>{});return result;
   }
 
-  async function handleRecorderClosed(tabId){
-    for(const key of [ACTIVE_RECORDING_KEY,PENDING_RECORDING_KEY]){
+  async function handleRecorderClosed(tabId,{includePending=true}={}){
+    for(const key of includePending?[ACTIVE_RECORDING_KEY,PENDING_RECORDING_KEY]:[ACTIVE_RECORDING_KEY]){
       const record=await loadRecord(key);
       if(record?.tabId===tabId){
         await storeRecord(key,null);
-        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'failed',message:'Recorder tab closed. Live recording data may be lost; reopen to recover finalized data.'});
+        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'failed',message:'Recorder tab closed or reloaded. Live recording data may be lost; reopen to recover finalized data.'});
       }
     }
   }
@@ -264,6 +272,13 @@ export function createChromeAutomationController({
       }
 
       case AUTOMATION_COMMANDS.AUTOMATION_ERROR:
+        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'failed',reason:command.reason,message:command.message});
+        {
+          const pending=await loadRecord(PENDING_RECORDING_KEY);
+          if(pending?.tabId===sender.tab?.id)await storeRecord(PENDING_RECORDING_KEY,null);
+          const active=await loadRecord(ACTIVE_RECORDING_KEY);
+          if(active?.tabId===sender.tab?.id)await storeRecord(ACTIVE_RECORDING_KEY,null);
+        }
         return { ok: true, type: command.type };
 
       default:

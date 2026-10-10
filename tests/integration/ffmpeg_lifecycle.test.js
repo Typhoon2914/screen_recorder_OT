@@ -11,3 +11,8 @@ test('FFmpeg remux returns exactly the output view and cleans temporary data',as
   const output=await runRemux({writeFile:async()=>{},exec:async()=>0,readFile:async()=>bytes,deleteFile:async()=>{}},new Uint8Array([1]));
   assert.equal(output.size,2);
 });
+test('production finalization releases the FFmpeg worker even on failure',async()=>{
+  let terminated=0;
+  await assert.rejects(runRemux({writeFile:async()=>{},exec:async()=>1,deleteFile:async()=>{},terminate:()=>terminated++},new Uint8Array([1]),{terminate:true}));
+  assert.equal(terminated,1);
+});
