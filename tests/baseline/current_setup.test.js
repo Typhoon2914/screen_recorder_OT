@@ -19,8 +19,10 @@ test("baseline: extension manifest preserves the current MV3 contract", () => {
   const manifest = readJson("src/public/manifest.json");
 
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.name, "Screen Recorder");
-  assert.equal(manifest.action.default_title, "Screen Recorder");
+  assert.equal(manifest.name, "Screen Recorder DEV");
+  assert.equal(manifest.action.default_title, "Screen Recorder DEV");
+  assert.equal(manifest.version, "1.1.0.0");
+  assert.equal(manifest.version_name, "1.1.0-dev.1");
   assert.equal(manifest.action.default_popup, undefined);
 
   for (const permission of ["downloads", "tabs"]) {
