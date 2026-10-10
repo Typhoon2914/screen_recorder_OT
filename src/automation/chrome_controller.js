@@ -47,6 +47,7 @@ export function createChromeAutomationController({
   chromeApi,
   recorderUrl,
   schedules = [],
+  schedulesProvider = null,
   nowProvider = defaultNowProvider
 }) {
   if (!chromeApi) throw new Error("chromeApi is required.");
@@ -115,8 +116,11 @@ export function createChromeAutomationController({
     if (alarm?.name !== AUTOMATION_POLL_ALARM) return [];
 
     const now = nowProvider();
+    const currentSchedules = schedulesProvider
+      ? await schedulesProvider()
+      : schedules;
     const handled = await loadHandledOccurrences();
-    const due = dueSchedules(schedules, now, {
+    const due = dueSchedules(currentSchedules, now, {
       handledOccurrenceKeys: handled
     });
 
