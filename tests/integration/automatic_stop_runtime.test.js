@@ -100,6 +100,14 @@ test("auto-stop integration: terminal notification cancels deadline so no delaye
   await h.controller(startedAt).handleRuntimeMessage({
     type: "RECORDING_STARTED", recordingId: "rec-1", occurrenceKey
   }, { tab: { id: 15 } });
+
+  // First prove the controller has actually armed and persisted this recording.
+  // Otherwise the no-stop assertion below passes vacuously on an unwired runtime.
+  const armedState = JSON.stringify(h.state);
+  assert.match(armedState, /rec-1/, "recording must be armed before testing cancellation");
+  assert.match(armedState, /stop|deadline|startedAtMs/i,
+    "an armed recording must have persisted stop timing state");
+
   await h.controller().handleRuntimeMessage({
     type: "RECORDING_STOPPED", recordingId: "rec-1"
   }, { tab: { id: 15 } });
