@@ -2,7 +2,7 @@
 
 Result: **INTEGRATED UNATTENDED CAPTURE VERIFIED WITH SESSION PRECONDITIONS**. Two real, fresh scheduled recordings completed after one human toolbar authorization. This is not permanent capture permission, Teams acceptance, or a production-readiness claim.
 
-Branch: `experiment/codex-full-build`. HEAD: `1724b46342f0eab9735d98432df5289d1aaa29f0`. Implementation is uncommitted; pre-existing local changes preserved. No push, merge, reset, main/develop changes, stable extension changes, or normal Chrome profile changes.
+Original acceptance baseline: branch `experiment/codex-full-build`, HEAD `1724b46342f0eab9735d98432df5289d1aaa29f0`, with implementation then uncommitted. It was subsequently preserved through `88d0a22c88c98520be63f3ef73fc9f730418c229`; see the follow-up below. Pre-existing local work remains preserved. No push, merge, reset, main/develop changes, stable extension changes, or normal Chrome profile changes.
 
 ## Implementation
 
@@ -72,7 +72,7 @@ Test download routing uses GUID artifact names; production title/timestamp namin
 - Cross-origin navigation: grant revoked at 15:17:02.141 with `Target navigated to another origin. Reauthorize the target tab.` No substitute tab was captured.
 - Browser restart: UI showed UNATTENDED UNAVAILABLE. A real post-restart alarm at 15:19:05.884 failed with `Reauthorization required: no session grant for this schedule target`. Exactly two recording-start events and saved files remained.
 - **Restart causality caveat:** cross-origin navigation revoked authorization before restart in this integrated sequence. Thus this run proves post-restart UI/fail-closed behavior, not restart as the isolated cause of revocation. The earlier standalone authorization probe tested restart separately; session-loss unit coverage also remains. Do not conflate those evidence types.
-- **Final source caveat:** after the real run started, two small authorization-manager fixes preserved lecture titles separately from tab titles and retained a grant during transient loading. They passed the final automated gate but were not live-retested. The real-tested dist hashes are in `tested-build-manifest.json`; final dist differs only in `automation/tab_authorization.js`. The recorder/capture pipeline is unchanged.
+- **Original source caveat, resolved by the follow-up below:** after the original real run started, two small authorization-manager fixes preserved lecture titles separately from tab titles and retained a grant during transient loading. At that point they had passed only automated tests. The original real-tested dist hashes are in `tested-build-manifest.json`; the later dist differs only in `automation/tab_authorization.js`. Both fixes have now passed the focused real-browser rerun below. The recorder/capture pipeline is unchanged.
 - The first setup (`.test-artifacts/integrated-tab-1792076170587/`) was interrupted while waiting for human authorization after an intent expired during window-location assistance. No recording was claimed. The harness now refreshes pending intent during the wait, never the actual permission.
 
 ## Reliability scope
@@ -108,3 +108,42 @@ Under the real evidence root:
 Chrome stays running; the exact authorized target remains available; authorization remains valid; the PC stays awake; audio is actually playing/available; the meeting is already joined or joined through a separately verified workflow. Reauthorize after browser restart/extension reload or permission loss. Silent content can be conservatively rejected by readiness checks.
 
 The integrated extension is sufficient for the demonstrated session-scoped flow. Playwright is the acceptance controller, not the recording engine. OBS/native capture is not required for this demonstrated mode. Fully unattended operation across browser restarts with no renewed human authorization has NOT been delivered.
+
+## Committed implementation and live fix retest — 2026-10-15
+
+The intended implementation, existing dependent native-support coverage, and reproducible acceptance harnesses were preserved in logical commits:
+
+- `4a4ad81`: session-scoped authorization/capture adapter and unit coverage.
+- `e0e3f1a`: retained optional native-support source/tests and shared signal validation; no OBS launch or configuration.
+- `fceb8ae`: integrated scheduling, recorder, permissions and readiness UI.
+- `88d0a22`: acceptance harnesses, verification and documentation.
+
+An explicit 36-file staging allowlist, text review and credential-pattern scan found no credentials, binaries, recordings, browser profiles or temporary output. Generated evidence remains ignored under `.test-artifacts/`; build/dependencies are also ignored. Older standalone experimental runners and feasibility notes remain untracked and were not silently included. Post-commit tracked diff was empty.
+
+Protected branch refs remained unchanged:
+
+- `main`: `13874a0b1f62acfb66c282d8e6bc756e493c82a6`
+- `develop`: `f239734bbe743fac3380ec49b3be53cc5b2d9e76`
+
+Post-commit `node scripts/verification.mjs`: 192 passed, 0 failed/skipped; Vite build and all 13 syntax checks PASS. Logs and commit audit: `.test-artifacts/verification-2026-10-15T16-12-21-902Z/`.
+
+### Focused live tests: both PASS
+
+`node scripts/authorization-fixes-acceptance.mjs` ran the committed application at `88d0a22c88c98520be63f3ef73fc9f730418c229` in a fresh isolated Chrome for Testing 156.0.8078.4 profile. No capture mocks or seeded grants were used. The user invoked the extension toolbar once at 16:13:00.845 UTC. The exact built authorization-module SHA-256 was `872e66147988d63ede59b37f607d896088288ad3d518fbb26406b46f22db8bde`.
+
+1. **Schedule title isolation:** two different lecture titles remained correct in the actual extension UI and status API, distinct from the captured tab title. They stayed correct after reload changed the page title.
+2. **Transient loading:** a real same-origin reload was held at its HTTP response. Chrome's actual tabs API reported `status: loading`. Both schedule status checks returned `Target is loading`, not reauthorization. Session grant records remained identical. Once the response completed, both schedules regained eligibility with the same tab ID, unchanged grant and exactly one authorization event.
+
+The harness then legitimately clicked the synthetic source's Play button to resume audio after reload. This was source playback setup, NOT another extension invocation or capture authorization, and occurred before the no-input recording interval. This does not prove that arbitrary source autoplay restrictions disappear.
+
+The existing production alarm at 16:15:33.547 UTC started a fresh recording at 16:15:37.138 UTC. Automatic stop ended both tracks at 16:16:37.132 UTC; verified automatic save completed at 16:16:37.501 UTC. No Start, Stop, Download or picker clicks occurred during that interval.
+
+Output: `.test-artifacts/authorization-fixes-1792080753103/75b2b923-a320-4838-bcbd-f3f8ace4233b.mp4`.
+
+- 60.005 seconds, 4,273,354 bytes; H.264 video and AAC audio.
+- Full-frame decoding, fast-start, audio/video endpoint agreement: PASS.
+- 2,810 finite audio measurements, mean -30.996 dBFS; changing video confirmed.
+- Chrome playback and midpoint seek: PASS; reviewer errors empty, exit 0.
+- Run result: `BOTH_AUTHORIZATION_FIXES_VERIFIED_IN_REAL_CHROME`, exit 0.
+
+Evidence root: `.test-artifacts/authorization-fixes-1792080753103/`. Contains `events.jsonl`, `results.json`, six UI screenshots from authorization through save, a playback screenshot, media probe/review/decode outputs, and the isolated profile. These files are intentionally NOT committed. No production source changes were needed for this rerun.

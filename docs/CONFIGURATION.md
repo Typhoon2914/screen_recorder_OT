@@ -21,7 +21,7 @@ For **Authorized tab — fresh unattended capture**:
 3. In the authorization panel select the schedule and the exact existing tab (ID, title and URL are shown). Confirm readiness, then select the target for toolbar authorization.
 4. On that target tab click Chrome Extensions → Screen Recorder EXPERIMENT once. A UI button cannot substitute for this legitimate extension invocation.
 5. Check the authorization list. Other enabled tab-mode schedules with the same configured URL share that exact tab grant. Scheduled starts recheck the grant and measure captured audio; they never select another tab or open a picker as fallback.
-6. Keep Chrome running, the authorized tab available and the PC awake. Reauthorize after browser restart, extension reload, tab closure, cross-origin navigation, grant loss or a failed readiness check. Saving releases streams, not a guarantee of future permission.
+6. Keep Chrome running, the authorized tab available and the PC awake. Reauthorize after browser restart, extension reload, tab closure, cross-origin navigation or grant loss. Transient loading retains the grant: wait for the page to finish. For silent audio, check source playback/autoplay; this is not automatically permission loss. Saving releases streams, not a guarantee of future permission.
 
 Disable/delete cancels future dispatches and is rechecked just before MediaRecorder starts. To stop an already running occurrence, use Stop; disabling a schedule is not a destructive discard operation. Keep the recorder open until Saved. The native experimental backend must be disabled for this browser provider.
 
