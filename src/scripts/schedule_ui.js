@@ -3,6 +3,24 @@ import {getNextRun} from '../automation/scheduler.js';
 const $=id=>document.getElementById(id);
 let schedules=[];
 const report=error=>{$('scheduleStatus').textContent=error.message || String(error);};
+async function nativeStatus(){
+  const {nativeCompanion,nativeCompanionHealth}=await chrome.storage.local.get(['nativeCompanion','nativeCompanionHealth']);
+  $('nativeEnabled').checked=nativeCompanion?.enabled===true;
+  $('nativeStatus').textContent=nativeCompanion?.enabled?'Native: '+(nativeCompanionHealth?.phase || 'connecting'):'Native companion disabled';
+}
+$('nativeSave').onclick=async()=>{
+  try{
+    const result=await chrome.runtime.sendMessage({type:'SET_NATIVE_COMPANION',enabled:$('nativeEnabled').checked,token:$('nativeToken').value.trim()});
+    if(!result?.ok)throw Error(result?.error || 'Native configuration failed');
+    $('nativeToken').value='';await nativeStatus();
+  }catch(error){$('nativeStatus').textContent=error.message;}
+};
+$('nativeRefresh').onclick=async()=>{
+  const result=await chrome.runtime.sendMessage({type:'REFRESH_NATIVE_COMPANION'});
+  if(!result?.ok)$('nativeStatus').textContent=result?.error || 'Native refresh failed';else await nativeStatus();
+};
+chrome.storage.onChanged.addListener(changes=>{if(changes.nativeCompanion || changes.nativeCompanionHealth)nativeStatus().catch(report);});
+nativeStatus().catch(report);
 function nowParts(){const d=new Date();return {date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,weekday:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()],time:d.toTimeString().slice(0,8)};}
 function button(text,action){const b=document.createElement('button');b.className='btn';b.type='button';b.textContent=text;b.onclick=()=>Promise.resolve().then(action).catch(report);return b;}
 async function render(){
@@ -20,6 +38,7 @@ async function render(){
       $('scheduleId').value=s.id;$('lectureName').value=s.title || s.id;
       $('weekday').value=s.weekdays[0];$('scheduleTime').value=s.time;
       $('scheduleDuration').value=s.durationMinutes || 60;$('targetUrl').value=s.targetUrl || '';$('scheduleEnabled').checked=s.enabled;
+      $('captureMode').value=s.captureMode || 'manual';
       $('scheduleStatus').textContent=s.weekdays.length>1?'Editing preserves the existing weekdays; changing weekday replaces them.':'';
       $('weekday').dataset.original=s.weekdays[0];
     }),button(s.enabled?'Disable':'Enable',async()=>{
@@ -44,6 +63,7 @@ $('scheduleForm').addEventListener('submit',async event=>{
     const id=$('scheduleId').value || crypto.randomUUID();
     const existing=schedules.find(s=>s.id===id);
     const schedule={...existing,id,title:$('lectureName').value.trim(),weekdays:existing && $('weekday').value===$('weekday').dataset.original?existing.weekdays:[$('weekday').value],time:$('scheduleTime').value,durationMinutes:Number($('scheduleDuration').value),targetUrl:$('targetUrl').value.trim(),enabled:$('scheduleEnabled').checked,launchWindowSeconds:120};
+    schedule.captureMode=$('captureMode').value;
     await updateSchedules(chrome,items=>[...items.filter(s=>s.id!==id),schedule]);
     $('scheduleForm').reset();$('scheduleId').value='';await render();$('scheduleStatus').textContent='Schedule saved';
   }catch(error){report(error);}

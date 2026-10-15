@@ -80,8 +80,24 @@
       </section>
     </main>
     <section class="panel schedulePanel">
+      <h2>Windows native companion (experimental)</h2>
+      <p>Use a separately configured, already-joined meeting window. Native capture does not use Chrome's picker and does not join meetings or resolve lobbies. Keep the companion and isolated OBS running. Do not use manual capture concurrently.</p>
+      <label><input id="nativeEnabled" type="checkbox" /> Run schedules through the native companion</label>
+      <label>One-time pairing token <input id="nativeToken" type="password" autocomplete="off" /></label>
+      <button class="btn" id="nativeSave" type="button">Save native configuration</button>
+      <button class="btn" id="nativeRefresh" type="button">Refresh native status</button>
+      <p id="nativeStatus" role="status">Native companion disabled</p>
       <h2>Weekly schedules</h2>
-      <p>Local computer time. One recording at a time. Cold unattended capture is not supported by Chrome; arm each occurrence beforehand.</p>
+      <p>Local computer time. One recording at a time. Authorized-tab schedules acquire a fresh stream without a picker while the target's session grant remains valid. Chrome restart requires reauthorization. Manual/pre-armed capture remains available.</p>
+      <h3>Authorize a specific tab for unattended schedules</h3>
+      <p>First save a schedule with Authorized tab capture. Open/join its target URL and start audio. Select the exact tab below, then click the extension's toolbar action while that target is selected. Keep Chrome running, the target available and the PC awake. Permission is not permanent; silence may mean autoplay or mute, not readiness.</p>
+      <label>Schedule <select id="authorizationSchedule"></select></label>
+      <label>Existing target <select id="authorizationTarget"></select></label>
+      <label><input id="authorizationReady" type="checkbox" /> The intended meeting is joined, past any lobby, and has playing audio.</label>
+      <button id="authorizationRefresh" class="btn" type="button">Refresh target/status</button>
+      <button id="authorizeTarget" class="btn" type="button">Select target for toolbar authorization</button>
+      <p id="authorizationStatus" role="status">No permanent capture permission is stored. Reauthorize after Chrome restart or grant loss.</p>
+      <div id="authorizationList"></div>
       <form id="scheduleForm">
         <input id="scheduleId" type="hidden" />
         <label>Lecture name <input id="lectureName" required maxlength="200" /></label>
@@ -89,6 +105,7 @@
         <label>Local time <input id="scheduleTime" type="time" required /></label>
         <label>Duration (minutes) <input id="scheduleDuration" type="number" min="1" max="1440" value="60" required /></label>
         <label>Meeting URL <input id="targetUrl" type="url" placeholder="https://teams.microsoft.com/…" /></label>
+        <label>Capture provider <select id="captureMode"><option value="manual">Manual / pre-armed capture</option><option value="tab">Authorized tab — fresh unattended capture</option></select></label>
         <label><input id="scheduleEnabled" type="checkbox" checked /> Enabled</label>
         <button class="btn primary" type="submit">Save schedule</button>
         <button class="btn" id="cancelEdit" type="button">Clear form</button>

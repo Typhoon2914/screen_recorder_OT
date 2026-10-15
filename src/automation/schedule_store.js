@@ -55,6 +55,8 @@ export function validateScheduleConfig(schedule) {
 
   if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
   if(schedule.durationMinutes>1440)throw Error('Duration must not exceed 1440 minutes');
+  if(schedule.captureMode!=null && !['manual','tab'].includes(schedule.captureMode))throw Error('Invalid capture mode');
+  if(schedule.captureMode==='tab' && (!schedule.targetUrl || schedule.durationMinutes==null))throw Error('Authorized tab capture requires target URL and duration');
   if(schedule.title!=null && (typeof schedule.title!=='string' || schedule.title.length>200))throw Error('Invalid lecture title');
   if(schedule.targetUrl){
     const url=new URL(schedule.targetUrl);

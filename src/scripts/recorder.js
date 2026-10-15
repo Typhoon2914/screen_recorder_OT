@@ -3,6 +3,8 @@ import { createRecorderBridge } from "../automation/recorder_bridge.js";
 import { recordingFilename, createSaveSession, createVerifiedSaver } from "../automation/recording_safety.js";
 import { vault } from "./recording_vault.js";
 import {recorderOptions} from '../automation/recording_options.js';
+import {acquireAuthorizedTab} from '../automation/tab_capture.js';
+import './tab_capture_ui.js';
 import "./schedule_ui.js";
 
 const $ = (id) => document.getElementById(id);
@@ -45,6 +47,18 @@ let recordingTitle = '';
 let recoveryRecord = null;
 let initializationComplete = false;
 let recordingWarnings=[];
+let authorizedCapture=null;
+let authorizedTargetId=null;
+let recordingContext=null;
+async function captureEvidence(state,fields={}){
+  const {captureEvents=[]}=await chrome.storage.local.get('captureEvents');
+  await chrome.storage.local.set({captureEvents:[...captureEvents,{at:new Date().toISOString(),state,...fields}].slice(-100)});
+}
+async function captureRequest(type,request){
+  const result=await chrome.runtime.sendMessage({type,scheduleId:request.scheduleId,occurrenceKey:request.occurrenceKey});
+  if(!result?.ok)throw Error(result?.error || 'Capture authorization check failed');
+  return result;
+}
 let saveFile = createVerifiedSaver(chrome.downloads, {onDownload: persistDownloadId});
 const saveSession = createSaveSession({save: (blob,name)=>saveFile(blob,name),onState:state=>{
   statusPill.textContent=state;
@@ -69,10 +83,12 @@ async function saveFinalized() {
       await vault('delete');recoveryRecord=null;
       const stored=await chrome.storage.local.get('recordingHistory');
       const history=Array.isArray(stored.recordingHistory)?stored.recordingHistory:[];
-      await chrome.storage.local.set({recordingHistory:[{id:item.id,filename:item.filename,bytes:item.fileSize,state:recordingWarnings.length?'saved_with_warning':'saved',warnings:recordingWarnings,at:new Date().toISOString()},...history].slice(0,100)});
+      await chrome.storage.local.set({recordingHistory:[{id:item.id,filename:item.filename,bytes:item.fileSize,state:recordingWarnings.length?'saved_with_warning':'saved',warnings:recordingWarnings,at:new Date().toISOString(),...recordingContext},...history].slice(0,100)});
+      await captureEvidence('saved',{filename:item.filename,bytes:item.fileSize,...recordingContext});
     }catch(error){detail.textContent+=` (History/recovery cleanup failed: ${error.message})`;}
   }catch(error){
     detail.textContent=`Save failed: ${error.message}. Recording retained; retry below.`;
+    captureEvidence('save_failed',{message:error.message,...recordingContext}).catch(console.warn);
     downloadBtn.textContent='Retry save';downloadBtn.disabled=false;
   }
 }
@@ -180,14 +196,26 @@ async function startRecording() {
   try {
     saveSession.begin();
     recordingWarnings=[];
+    recordingContext={mode:automationRequest?.captureMode==='tab'?'authorized-tab':automationRequest?'prearmed-or-picker':'manual',scheduleId:automationRequest?.scheduleId || null,occurrenceKey:automationRequest?.occurrenceKey || null};
     startBtn.disabled=true;
     recordingTitle=automationRequest?.title || $('recordingTitle').value || '';
     if(playbackURL){URL.revokeObjectURL(playbackURL);playbackURL=null;}
     showMode("live");
-    detail.textContent = "Opening chooser…";
+    detail.textContent = automationRequest?.captureMode==='tab'?"Checking authorized target and audio…":"Opening chooser…";
 
-    // show chooser immediately
-    const stream = armedStream || await navigator.mediaDevices.getDisplayMedia({
+    // Fresh tab capture is separate from the manual/pre-armed provider.
+    if(automationRequest?.captureMode==='tab'){
+      if(armedStream)throw Error('Disarm the manual capture before using authorized tab capture');
+      const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
+      authorizedTargetId=prepared.targetTabId;
+      authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,onSilence:message=>{
+        if(!recordingWarnings.includes(message))recordingWarnings.push(message);
+        detail.textContent=message;captureEvidence('audio_warning',{message}).catch(console.warn);
+      }});
+      recordingContext.targetTabId=authorizedTargetId;
+      recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;
+    }
+    const stream = authorizedCapture?.stream || armedStream || await navigator.mediaDevices.getDisplayMedia({
       video: true,
       audio: { echoCancellation: false, noiseSuppression: false }
     });
@@ -204,6 +232,11 @@ async function startRecording() {
     detail.textContent = "Stabilizing…";
     await sleep(1000);
     await waitForStableDims(track);
+    if(automationRequest?.captureMode==='tab'){
+      const checked=await captureRequest('TAB_CAPTURE_CHECK',automationRequest);
+      if(checked.tabId!==authorizedTargetId)throw Error('Authorized target changed during capture setup');
+      if(stream.getTracks().some(t=>t.readyState!=='live'))throw Error('Capture ended before recording began');
+    }
 
     track?.addEventListener("ended", () => {
       recordingWarnings.push('Video sharing ended');
@@ -230,6 +263,7 @@ async function startRecording() {
     mediaRecorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     mediaRecorder.onstop = handleStop;
     mediaRecorder.start();
+    captureEvidence('recording_started',{...recordingContext,tracks:stream.getTracks().map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
     if(!stream.getAudioTracks().length){recordingWarnings.push('Video only: no shared audio track');detail.textContent=recordingWarnings[0];}
     const duration=automationRequest?.durationMinutes;
     if(duration)deadlineTimer=setTimeout(stopRecording,duration*60000);
@@ -257,6 +291,7 @@ async function startRecording() {
     setRecordingUI(true);
   } catch (err) {
     console.error(err);
+    await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
     captureStream?.getTracks().forEach(t=>t.stop());captureStream=null;
     armedStream=null;armedScheduleId=null;saveSession.cancel();
 
@@ -274,10 +309,12 @@ async function startRecording() {
       });
     }
 
-    alert("Could not start screen capture.\n" + err.message);
+    if(!automationRequest)alert("Could not start screen capture.\n" + err.message);
     setRecordingUI(false);
-    detail.textContent = "—";
+    detail.textContent = "Capture failed: "+err.message;
+    captureEvidence('capture_failed',{message:err.message,...recordingContext}).catch(console.warn);
     showMode("live");
+    if(automationRequest)throw err;
   }
 }
 
@@ -288,6 +325,8 @@ async function handleStop() {
 
   const stream = preview.srcObject;
   stream?.getTracks().forEach((t) => t.stop());
+  await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
+  captureEvidence('recording_stopped',{...recordingContext,tracks:(stream?.getTracks() || []).map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
   preview.srcObject = null;
   captureStream=null;armedStream=null;armedScheduleId=null;
 
@@ -400,6 +439,7 @@ const recorderBridge = createRecorderBridge({
     if(armedStream && armedTargetUrl!==(request.targetUrl || ''))throw Error('Schedule target changed after arming; authorize it again');
     if(pendingAutomationRequest && pendingAutomationRequest.occurrenceKey!==request.occurrenceKey)throw Error('A different scheduled capture is awaiting approval');
     pendingAutomationRequest = request;
+    if(request.captureMode==='tab'){await startRecording();return;}
     if(armedStream && armedScheduleId===request.scheduleId && armedStream.getTracks().every(t=>t.readyState==='live')){
       await startRecording();return;
     }
@@ -416,6 +456,10 @@ const recorderBridge = createRecorderBridge({
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if(sender.id!==chrome.runtime.id)return false;
+  if(message.type==='TAB_CAPTURE_REVOKED' && message.targetTabId===authorizedTargetId){
+    recordingWarnings.push(message.reason);
+    detail.textContent=message.reason;stopRecording();return false;
+  }
   if(message.recorderTabId==null)return false;
   chrome.tabs.getCurrent().then(tab=>{
     if(tab?.id!==message.recorderTabId)return;

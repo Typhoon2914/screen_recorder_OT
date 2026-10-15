@@ -56,6 +56,7 @@ export function createChromeAutomationController({
   recorderUrl,
   schedules = [],
   schedulesProvider = null,
+  scheduledTargetProvider = null,
   nowProvider = defaultNowProvider,
   nowMsProvider = () => Date.now()
 }) {
@@ -83,11 +84,12 @@ export function createChromeAutomationController({
     });
   }
 
-  async function openOrFocusRecorder() {
+  async function openOrFocusRecorder(background=false) {
     const tabs = await chromeApi.tabs.query({});
     const existing = tabs.find((tab) => tab.url === recorderUrl);
 
     if (existing?.id != null) {
+      if(background)return existing;
       await chromeApi.tabs.update(existing.id, { active: true });
 
       if (existing.windowId != null) {
@@ -97,7 +99,7 @@ export function createChromeAutomationController({
       return existing;
     }
 
-    return chromeApi.tabs.create({ url: recorderUrl });
+    return chromeApi.tabs.create({ url: recorderUrl, ...(background?{active:false}:{}) });
   }
 
   async function loadRecord(key) {
@@ -139,7 +141,10 @@ export function createChromeAutomationController({
 
   async function dispatchRecording(schedule, now, handled) {
     if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
-    if(schedule.targetUrl){
+    if(schedule.captureMode==='tab'){
+      if(!scheduledTargetProvider)throw Error('Authorized tab capture is unavailable');
+      await scheduledTargetProvider(schedule.id);
+    }else if(schedule.targetUrl){
       const remembered=await loadRecord('automationTargetTabs') || {};
       const previous=remembered[schedule.id];
       const target=await prepareTarget(chromeApi.tabs,schedule.targetUrl,previous?.url===schedule.targetUrl?previous.tabId:null);
@@ -147,7 +152,7 @@ export function createChromeAutomationController({
       if(!target.ready)throw Error(`Capture target is not ready: ${target.reason}. Login, lobby and meeting admission require user verification.`);
     }
     const occurrenceKey = getOccurrenceKey(schedule, now);
-    const tab = await openOrFocusRecorder();
+    const tab = await openOrFocusRecorder(schedule.captureMode==='tab');
 
     if (tab?.id == null) {
       throw new Error("Recorder tab could not be opened.");
@@ -157,6 +162,7 @@ export function createChromeAutomationController({
       type: AUTOMATION_COMMANDS.REQUEST_RECORDING,
       scheduleId: schedule.id,
       occurrenceKey,
+      ...(schedule.captureMode==='tab'?{captureMode:'tab'}:{}),
       ...(schedule.title!=null?{title:schedule.title}:{}),
       ...(schedule.durationMinutes!=null?{durationMinutes:schedule.durationMinutes}:{}),
       ...(schedule.targetUrl?{targetUrl:schedule.targetUrl}:{})
