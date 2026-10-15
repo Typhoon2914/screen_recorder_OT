@@ -1,5 +1,9 @@
 # Test strategy and acceptance
 
+## Current authorized-tab integration gate (2026-10-15)
+
+See [integrated authorized-tab acceptance](INTEGRATED_TAB_ACCEPTANCE.md): two real scheduled recordings after one authorization, fresh streams fully released between occurrences, automatic stop/save, validated AV, and minimized second capture. Final automated suite: 192/192; build and 13 syntax checks passed. Session preconditions and restart-test caveats are explicit in that report. The older broad checklist below is not a claim that every deployment gate is complete. OBS/companion gates belong to the retained alternative experiment and are not requirements of this demonstrated tabCapture mode.
+
 ## Automated gates
 
 - npm test: original regressions plus saving, editor validation, FFmpeg lifecycle, races/overlap, target readiness and companion safety.

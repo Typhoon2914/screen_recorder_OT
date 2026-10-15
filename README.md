@@ -25,7 +25,11 @@ Load **this worktree's dist** into a separate Chrome test profile. The extension
 
 ## Capture boundary
 
-An alarm cannot authorize a fresh Chrome capture stream. Explicitly select a tab and arm one schedule beforehand; recording can then start without another Start click while that stream remains alive. Keep the recorder open and computer awake. Completion releases the stream; the next occurrence needs a fresh arm.
+An alarm cannot grant capture permission to an uninvoked tab. The experimental **Authorized tab** provider instead uses one legitimate toolbar invocation for an exact target, then obtains a fresh one-use tabCapture stream for each schedule while that session grant remains usable. It releases all tracks between recordings. Chrome restart, target closure, cross-origin navigation or permission loss requires reauthorization. This is not permanent install-once authorization.
+
+Manual getDisplayMedia and the existing pre-armed workflow remain available. The recorder, MediaRecorder, duration stop, FFmpeg fast-start, recovery vault and verified downloads are shared; Playwright is only a test controller, not the recording engine.
+
+See [authorized-tab setup, architecture and limitations](docs/AUTHORIZED_TAB_CAPTURE.md) and [integrated acceptance evidence](docs/INTEGRATED_TAB_ACCEPTANCE.md). Real acceptance status must be read separately from passing unit tests.
 
 The optional local OBS companion uses native capture rather than Chrome's picker. It is **mock-tested, not live-validated**, needs an isolated OBS/source setup, and does not log in to Teams, join meetings or resolve lobbies. Neither path claims cold unattended end-to-end Teams operation.
 

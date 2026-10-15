@@ -8,11 +8,13 @@ This implementation retains the existing recorder and explicit getDisplayMedia c
 
 ## Flow and state
 
+The new authorized-tab provider is described in [AUTHORIZED_TAB_CAPTURE.md](AUTHORIZED_TAB_CAPTURE.md). It obtains a fresh stream after a prior legitimate invocation on the same tab; it does not rely on keeping a pre-armed stream alive. Session storage is a hint, not permission. Each start checks Chrome access, exact tab identity/origin, schedule enablement and live media. Manual/pre-armed behavior below remains supported.
+
 1. Schedule UI validates and persists automationSchedules. Origin-wide Web Locks serialize read/modify/write edits.
 2. The MV3 worker polls each minute. The controller fetches enabled schedules, serializes alarms, and checks occurrence/overlap state.
-3. Configured target pages are opened if absent. Loading is not ready; complete loading still does not prove login/admission.
+3. Manual/pre-armed targets may be opened if absent. Authorized-tab mode never substitutes or opens a replacement capture target; a missing grant/target fails closed. Loading is not ready; complete loading still does not prove login/admission.
 4. Addressed runtime messages reach extension documents. tabs.sendMessage is a content-script transport, so the real worker adapts the pure controller's injected transport.
-5. The recorder starts an armed stream or requests approval. Pending duration context is persisted before dispatch to avoid immediate-start acknowledgment races.
+5. The recorder acquires a fresh authorized-tab stream, starts an armed stream, or requests manual approval according to the schedule's explicit provider. Pending duration context is persisted before dispatch to avoid immediate-start acknowledgment races.
 6. A local timer and persisted worker deadline stop recording. Pausing does not extend wall-clock lecture duration.
 7. Finalization stops tracks, creates media and remuxes MP4 fast-start. Remux failure retains original media with a visible warning.
 8. IndexedDB holds one finalized recovery blob. The saver verifies Chrome download completion and nonzero existing file, then removes recovery and adds bounded history.

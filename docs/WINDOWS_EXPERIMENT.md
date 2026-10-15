@@ -15,6 +15,8 @@ The harness creates a fresh profile per run, without Teams credentials. For inte
 
 After building, reload only the experimental extension, never during an unsaved recording. Choose the synthetic capture target manually; do not automate security dialogs. Verify download behavior in the dedicated profile if policies require file prompts.
 
+The authorized-tab provider adds activeTab, tabCapture and scripting permissions. Reloading the extension clears its session grants: follow the [authorization setup](CONFIGURATION.md) again. Keep the PC awake and Chrome running; this feature does not install Windows startup tasks or change sleep/power settings. No OBS installation is required for this provider.
+
 ## Optional OBS fallback — manual setup
 
 Use a separate [portable OBS installation](https://obsproject.com/kb/portable-mode), not normal OBS configuration. Create BOTH profile and scene collection named ScreenRecorderExperiment. Configure the exact expected scene, dedicated loopback WebSocket port (example 4457), and password. Set native window capture/application audio to the dedicated synthetic test Chrome instance. Validate these sources before authorized meeting use.
