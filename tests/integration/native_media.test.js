@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateNativeProbe,validateAudioLevels} from '../../companion/media.js';
+const probe=()=>({format:{duration:'60',size:'1024'},streams:[{codec_type:'video',nb_read_frames:'1800',width:1280,height:720},{codec_type:'audio',nb_read_frames:'2800'}]});
+test('native media requires decoded video and audio, size and expected duration',()=>{assert.equal(validateNativeProbe(probe(),60).duration,60);});
+test('native media rejects missing audio',()=>{const p=probe();p.streams.pop();assert.throws(()=>validateNativeProbe(p,60),/audio/i);});
+test('native media rejects an empty encoded stream',()=>{const p=probe();p.streams[0].nb_read_frames='0';assert.throws(()=>validateNativeProbe(p,60),/decoded/i);});
+test('native media rejects truncated recordings',()=>{const p=probe();p.format.duration='5';assert.throws(()=>validateNativeProbe(p,60),/duration/i);});
+test('native media rejects empty files',()=>{const p=probe();p.format.size='0';assert.throws(()=>validateNativeProbe(p,60),/empty/i);});
+test('native media rejects fully silent decoded audio despite an audio track',()=>{assert.throws(()=>validateAudioLevels([-Infinity,-Infinity]),/silent/);});
+test('native media rejects absent audio measurements',()=>{assert.throws(()=>validateAudioLevels([]),/silent/);});
+test('native media retains quiet speech and reports its measured level',()=>{assert.equal(validateAudioLevels([-Infinity,-50,-40]).peakDbfs,-40);});
