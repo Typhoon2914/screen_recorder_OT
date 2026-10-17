@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Recorder Authorization Lifecycle Probe",
+  "version": "1.0",
+  "permissions": ["activeTab", "tabCapture", "scripting", "alarms", "storage", "downloads"],
+  "background": {"service_worker": "worker.js"},
+  "action": {"default_title": "Authorize this controlled tab ONCE"}
+}
