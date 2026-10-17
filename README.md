@@ -17,6 +17,8 @@ Load **this worktree's dist** into a separate Chrome test profile. The extension
 
 - [Windows installation and loading](docs/WINDOWS_EXPERIMENT.md)
 - [Configuration](docs/CONFIGURATION.md)
+- [Experimental Teams auto-join setup and limits](docs/TEAMS_AUTO_JOIN.md)
+- [Real Teams auto-join acceptance and tonight configuration](docs/TEAMS_AUTO_JOIN_ACCEPTANCE.md)
 - [Architecture and feasibility](docs/EXPERIMENT_ARCHITECTURE.md)
 - [Tests and acceptance](docs/ACCEPTANCE.md)
 - [Troubleshooting and limitations](docs/TROUBLESHOOTING.md)

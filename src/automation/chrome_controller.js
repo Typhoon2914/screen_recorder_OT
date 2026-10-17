@@ -143,7 +143,11 @@ export function createChromeAutomationController({
     if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
     if(schedule.captureMode==='tab'){
       if(!scheduledTargetProvider)throw Error('Authorized tab capture is unavailable');
-      await scheduledTargetProvider(schedule.id);
+      const target=await scheduledTargetProvider(schedule.id);
+      if(target?.ready===false){
+        await storeRecord('automationDiagnostic',{at:new Date(nowMsProvider()).toISOString(),state:'waiting_for_meeting',message:target.reason || 'Waiting for Teams to join within the configured start window'});
+        return null;
+      }
     }else if(schedule.targetUrl){
       const remembered=await loadRecord('automationTargetTabs') || {};
       const previous=remembered[schedule.id];
@@ -218,9 +222,8 @@ export function createChromeAutomationController({
       const pending=await loadRecord(PENDING_RECORDING_KEY);
       if(pending && nowMsProvider()-(pending.requestedAtMs || 0)<120000)break;
       if(pending)await storeRecord(PENDING_RECORDING_KEY,null);
-      dispatched.push(
-        await dispatchRecording(schedule, now, handled)
-      );
+      const result=await dispatchRecording(schedule,now,handled);
+      if(result)dispatched.push(result);
     }
 
     return dispatched;

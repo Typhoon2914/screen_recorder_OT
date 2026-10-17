@@ -1,5 +1,6 @@
 export const AUTOMATION_SCHEDULES_KEY = "automationSchedules";
 import {validateRecordingDuration} from './recording_duration.js';
+import {TEAMS_ORIGINS} from './teams_join.js';
 
 const WEEKDAYS = new Set([
   "Sunday",
@@ -38,6 +39,11 @@ export function validateScheduleConfig(schedule) {
     }
   }
 
+  if(schedule.runDate!=null){
+    const value=typeof schedule.runDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(schedule.runDate)?new Date(schedule.runDate+'T00:00:00Z'):null;
+    if(!value || !Number.isFinite(value.getTime()) || value.toISOString().slice(0,10)!==schedule.runDate || !schedule.weekdays.includes([...WEEKDAYS][value.getUTCDay()]))throw Error('Invalid schedule date or weekday');
+  }
+
   if (typeof schedule.time !== "string" || !TIME_PATTERN.test(schedule.time)) {
     throw new Error(`Invalid schedule time: ${schedule.time}`);
   }
@@ -57,6 +63,12 @@ export function validateScheduleConfig(schedule) {
   if(schedule.durationMinutes>1440)throw Error('Duration must not exceed 1440 minutes');
   if(schedule.captureMode!=null && !['manual','tab'].includes(schedule.captureMode))throw Error('Invalid capture mode');
   if(schedule.captureMode==='tab' && (!schedule.targetUrl || schedule.durationMinutes==null))throw Error('Authorized tab capture requires target URL and duration');
+  if(schedule.teamsAutoJoin!=null && typeof schedule.teamsAutoJoin!=='boolean')throw Error('Invalid Teams auto-join flag');
+  if(schedule.teamsAutoJoin){
+    if(schedule.captureMode!=='tab' || !TEAMS_ORIGINS.includes(new URL(schedule.targetUrl).origin))throw Error('Teams joining requires an authorized Teams tab');
+    for(const field of ['teamsTeam','teamsChannel'])if(typeof schedule[field]!=='string' || !schedule[field].trim() || schedule[field].length>200)throw Error('Teams team and channel names are required');
+    if(!Number.isInteger(schedule.joinWaitMinutes) || schedule.joinWaitMinutes<1 || schedule.joinWaitMinutes>60)throw Error('Teams waiting time must be 1–60 minutes');
+  }
   if(schedule.title!=null && (typeof schedule.title!=='string' || schedule.title.length>200))throw Error('Invalid lecture title');
   if(schedule.targetUrl){
     const url=new URL(schedule.targetUrl);

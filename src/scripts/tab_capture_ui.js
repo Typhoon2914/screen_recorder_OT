@@ -41,7 +41,7 @@ $('authorizationSchedule').onchange=refresh;
 $('authorizationRefresh').onclick=refresh;
 $('authorizeTarget').onclick=async()=>{
   try{
-    if(!$('authorizationReady').checked)throw Error('Confirm that the meeting is joined and playing audio before authorization');
+    if(!$('authorizationReady').checked)throw Error('Confirm that this is the correct Teams channel/tab before authorization');
     const targetTabId=Number($('authorizationTarget').value);
     if(!targetTabId)throw Error('Select an exact target tab; no automatic substitution is allowed');
     $('authorizationStatus').textContent='Next: with the target tab selected, click Chrome Extensions → Screen Recorder EXPERIMENT once. This authorizes that tab for this browser session.';

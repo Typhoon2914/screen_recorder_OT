@@ -2,6 +2,8 @@ import { createChromeAutomationController } from "./automation/chrome_controller
 import { loadEnabledSchedules } from "./automation/schedule_store.js";
 import {createTabAuthorization} from "./automation/tab_authorization.js";
 const tabAuthorization=createTabAuthorization(chrome);
+import {createTeamsJoiner} from './automation/teams_join.js';
+const teamsJoiner=createTeamsJoiner(chrome);
 import {refreshNativeCompanion,syncNativeCompanion} from "./automation/native_client.js";
 let nativeQueue=Promise.resolve();
 function queueNative(task){
@@ -22,7 +24,11 @@ const automationController = createChromeAutomationController({
   }}},
   recorderUrl: RECORDER_URL,
   schedulesProvider: () => loadEnabledSchedules(chrome),
-  scheduledTargetProvider: id=>tabAuthorization.check(id)
+  scheduledTargetProvider: async id=>{
+    const target=await tabAuthorization.check(id);
+    if(target.schedule.teamsAutoJoin)return {...target,...await teamsJoiner.ensure(target.schedule,target)};
+    return target;
+  }
 });
 
 async function openOrFocusRecorder() {
@@ -59,7 +65,7 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.session.remove(['tabCaptureGrants','tabCaptureAuthorizationIntent']).catch(console.error);
+  chrome.storage.session.remove(['tabCaptureGrants','tabCaptureAuthorizationIntent','teamsJoinSessions']).catch(console.error);
   chrome.storage.local.set({automationActiveRecording:null,automationPendingRecording:null,automationDiagnostic:{at:new Date().toISOString(),state:'needs_authorization',message:'Browser restarted. Reauthorize the target tab before unattended recording. Missed occurrences are not replayed.'}}).catch(console.error);
   ensureAutomationPolling().catch(console.error);
 });

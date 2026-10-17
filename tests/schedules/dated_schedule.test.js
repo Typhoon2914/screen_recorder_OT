@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateScheduleConfig} from '../../src/automation/schedule_store.js';
+import {isRecordingDue,getNextRun} from '../../src/automation/scheduler.js';
+const s={id:'tonight',enabled:true,weekdays:['Saturday'],time:'20:31',launchWindowSeconds:900,runDate:'2026-10-17'};
+const now={date:'2026-10-17',weekday:'Saturday',time:'20:31:30'};
+test('dated schedule runs today but never on the following matching weekday',()=>{assert.equal(isRecordingDue(s,now),true);assert.equal(isRecordingDue(s,{...now,date:'2026-10-24'}),false);});
+test('dated schedule has no future run after its time has passed',()=>assert.equal(getNextRun([s],now),null));
+test('dated schedule next run uses its exact future date, including beyond one week',()=>{assert.deepEqual(getNextRun([{...s,runDate:'2026-10-31'}],now),{scheduleId:'tonight',date:'2026-10-31',weekday:'Saturday',time:'20:31'});});
+test('dated schedule validation rejects impossible dates and mismatching weekdays',()=>{assert.doesNotThrow(()=>validateScheduleConfig(s));for(const runDate of ['2026-02-30','bad','2026-10-18'])assert.throws(()=>validateScheduleConfig({...s,runDate}));});

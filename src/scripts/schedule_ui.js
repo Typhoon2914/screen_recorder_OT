@@ -3,6 +3,31 @@ import {getNextRun} from '../automation/scheduler.js';
 const $=id=>document.getElementById(id);
 let schedules=[];
 const report=error=>{$('scheduleStatus').textContent=error.message || String(error);};
+// Keep the primary schedule flow above manual controls; preserve all existing IDs.
+const panel=document.querySelector('.schedulePanel');
+document.querySelector('.grid').before(panel);
+$('scheduleForm').after($('tabAuthorizationSetup'));
+async function refreshTeamsTabs(){
+  const previous=$('setupTeamsTab').value;
+  $('setupTeamsTab').replaceChildren(new Option('Choose the Teams channel tab',''));
+  for(const tab of await chrome.tabs.query({})){
+    if(/^https:\/\/teams\.(cloud\.microsoft|microsoft\.com)\//.test(tab.url || ''))$('setupTeamsTab').add(new Option(tab.title || 'Teams',String(tab.id)));
+  }
+  $('setupTeamsTab').value=previous;
+}
+$('refreshTeamsTabs').onclick=()=>refreshTeamsTabs().catch(report);
+$('useTeamsTab').onclick=async()=>{
+  try{
+    if(!$('setupTeamsTab').value)throw Error('Choose the intended Teams channel tab first');
+    const tab=await chrome.tabs.get(Number($('setupTeamsTab').value));
+    if(!/^https:\/\/teams\.(cloud\.microsoft|microsoft\.com)\//.test(tab.url || ''))throw Error('Selected tab is no longer Teams');
+    $('targetUrl').value=tab.url;$('captureMode').value='tab';
+    const parts=(tab.title || '').split(' | ');
+    if(parts.length===4 && parts[0]==='Teams and Channels'){$('teamsTeam').value=parts[1];$('teamsChannel').value=parts[2];}
+    $('scheduleStatus').textContent='Target selected. Check the exact team/channel names and save the schedule.';
+  }catch(error){report(error);}
+};
+refreshTeamsTabs().catch(report);
 async function nativeStatus(){
   const {nativeCompanion,nativeCompanionHealth}=await chrome.storage.local.get(['nativeCompanion','nativeCompanionHealth']);
   $('nativeEnabled').checked=nativeCompanion?.enabled===true;
@@ -33,12 +58,14 @@ async function render(){
     const row=document.createElement('div');row.className='scheduleRow';
     const label=document.createElement('span');
     const next=getNextRun([s],nowParts());
-    label.textContent=`${s.title || s.id} · ${s.weekdays.join(', ')} ${s.time} · ${s.durationMinutes || 'manual'} min · ${s.enabled?'Next '+next.date+' '+next.time:'Disabled'}`;
+    label.textContent=`${s.title || s.id} · ${s.runDate || s.weekdays.join(', ')} ${s.time} · ${s.durationMinutes || 'manual'} min · ${s.enabled?(next?'Next '+next.date+' '+next.time:'No future run'):'Disabled'}`;
     row.append(label,button('Edit',()=>{
       $('scheduleId').value=s.id;$('lectureName').value=s.title || s.id;
       $('weekday').value=s.weekdays[0];$('scheduleTime').value=s.time;
+      $('runDate').value=s.runDate || '';
       $('scheduleDuration').value=s.durationMinutes || 60;$('targetUrl').value=s.targetUrl || '';$('scheduleEnabled').checked=s.enabled;
       $('captureMode').value=s.captureMode || 'manual';
+      $('teamsAutoJoin').checked=s.teamsAutoJoin===true;$('teamsTeam').value=s.teamsTeam || '';$('teamsChannel').value=s.teamsChannel || 'General';$('joinWaitMinutes').value=s.joinWaitMinutes || 15;
       $('scheduleStatus').textContent=s.weekdays.length>1?'Editing preserves the existing weekdays; changing weekday replaces them.':'';
       $('weekday').dataset.original=s.weekdays[0];
     }),button(s.enabled?'Disable':'Enable',async()=>{
@@ -64,6 +91,11 @@ $('scheduleForm').addEventListener('submit',async event=>{
     const existing=schedules.find(s=>s.id===id);
     const schedule={...existing,id,title:$('lectureName').value.trim(),weekdays:existing && $('weekday').value===$('weekday').dataset.original?existing.weekdays:[$('weekday').value],time:$('scheduleTime').value,durationMinutes:Number($('scheduleDuration').value),targetUrl:$('targetUrl').value.trim(),enabled:$('scheduleEnabled').checked,launchWindowSeconds:120};
     schedule.captureMode=$('captureMode').value;
+    if($('runDate').value){schedule.runDate=$('runDate').value;schedule.weekdays=[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(schedule.runDate+'T00:00:00Z').getUTCDay()]];}else delete schedule.runDate;
+    schedule.teamsAutoJoin=$('teamsAutoJoin').checked;
+    schedule.teamsTeam=$('teamsTeam').value.trim();schedule.teamsChannel=$('teamsChannel').value.trim();
+    schedule.joinWaitMinutes=Number($('joinWaitMinutes').value);
+    if(schedule.teamsAutoJoin)schedule.launchWindowSeconds=schedule.joinWaitMinutes*60;
     await updateSchedules(chrome,items=>[...items.filter(s=>s.id!==id),schedule]);
     $('scheduleForm').reset();$('scheduleId').value='';await render();$('scheduleStatus').textContent='Schedule saved';
   }catch(error){report(error);}

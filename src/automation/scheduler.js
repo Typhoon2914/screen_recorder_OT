@@ -81,6 +81,7 @@ export function isRecordingDue(schedule, now, options = {}) {
   }
 
   if (!schedule.weekdays.includes(now.weekday)) return false;
+  if (schedule.runDate && schedule.runDate !== now.date) return false;
 
   const scheduledSeconds = parseClock(schedule.time);
   const nowSeconds = parseClock(now.time);
@@ -112,6 +113,15 @@ export function getNextRun(schedules, now) {
   for (const schedule of schedules) {
     validateSchedule(schedule);
     const scheduledSeconds = parseClock(schedule.time);
+
+    if(schedule.runDate){
+      const daysAhead=(Date.parse(schedule.runDate+'T00:00:00Z')-Date.parse(now.date+'T00:00:00Z'))/86400000;
+      if(!Number.isFinite(daysAhead) || daysAhead<0 || (daysAhead===0 && currentSeconds>=scheduledSeconds))continue;
+      const weekday=WEEKDAYS[new Date(schedule.runDate+'T00:00:00Z').getUTCDay()];
+      const candidate={scheduleId:schedule.id,date:schedule.runDate,weekday,time:schedule.time,sortKey:daysAhead*86400+scheduledSeconds};
+      if(!best || candidate.sortKey<best.sortKey)best=candidate;
+      continue;
+    }
 
     for (const weekday of schedule.weekdays) {
       const targetWeekday = weekdayIndex(weekday);
