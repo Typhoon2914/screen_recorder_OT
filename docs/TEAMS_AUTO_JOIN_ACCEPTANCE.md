@@ -1,5 +1,10 @@
 # Teams auto-join acceptance — 2026-10-17
 
+**Subsequent incident:** the later regular-Chrome lecture attempt failed to join.
+The successful test below is historical evidence for the isolated test profile,
+not acceptance of that migration. See
+[the incident investigation](TEAMS_AUTO_JOIN_INCIDENT_2026-10-17.md).
+
 Branch: `experiment/codex-full-build`. Experimental worktree only. No push,
 merge, main/develop change, stable-extension change or normal-profile change.
 Implementation is uncommitted at the end of this acceptance run.

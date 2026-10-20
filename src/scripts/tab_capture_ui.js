@@ -25,9 +25,20 @@ async function refresh(){
     for(const item of result.items){
       const row=document.createElement('p');
       row.textContent=item.available
-        ?`${item.title}: session authorization present — tab ${item.tabId}, ${item.currentUrl}. Unattended start eligible; audio/video checked at start.`
+        ?`${item.title}: session authorization present — tab ${item.tabId}, ${item.currentUrl}. This alone does not verify auto-join or recording; audio/video are checked at start.`
         :`${item.title}: UNATTENDED UNAVAILABLE — ${item.message}`;
       if(item.available){
+        if(item.schedule?.teamsAutoJoin){
+          const check=document.createElement('button');check.type='button';check.className='btn';check.textContent='Check Teams readiness (no joining)';
+          check.onclick=async()=>{
+            check.disabled=true;
+            try{
+              const {result}=await send('TAB_CAPTURE_TEAMS_PREFLIGHT',{scheduleId:item.scheduleId});
+              $('authorizationStatus').textContent=`${item.title}: ${result.reason}`;
+            }catch(error){showError(error);}finally{check.disabled=false;}
+          };
+          row.append(check);
+        }
         const clear=document.createElement('button');clear.type='button';clear.className='btn';clear.textContent='Revoke this tab';
         clear.onclick=()=>send('TAB_CAPTURE_FORGET',{targetTabId:item.tabId}).then(refresh).catch(showError);
         row.append(clear);

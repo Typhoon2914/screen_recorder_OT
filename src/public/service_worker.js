@@ -113,6 +113,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if(sender.tab?.url!==RECORDER_URL)return false;
     (async()=>{
       if(message.type==='TAB_CAPTURE_STATUS')return {ok:true,items:await tabAuthorization.status()};
+      if(message.type==='TAB_CAPTURE_TEAMS_PREFLIGHT'){
+        const target=await tabAuthorization.check(message.scheduleId);
+        if(!target.schedule.teamsAutoJoin)throw Error('Automatic Teams joining is not enabled for this schedule');
+        return {ok:true,result:await teamsJoiner.inspect(target.schedule,target)};
+      }
       if(message.type==='TAB_CAPTURE_REQUEST_AUTH'){
         const target=await tabAuthorization.request(message.scheduleId,message.targetTabId);
         await chrome.tabs.update(target.tabId,{active:true});

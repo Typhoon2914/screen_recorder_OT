@@ -3,15 +3,19 @@ import fs from "node:fs";
 import path from "node:path";
 
 function copyFFmpegCore() {
+  let outputDir;
   return {
     name: "copy-ffmpeg-core",
+    configResolved(config) {
+      outputDir = path.resolve(config.root, config.build.outDir);
+    },
     closeBundle() {
       const esmDir = path.resolve("node_modules/@ffmpeg/core/dist/esm");
       if (!fs.existsSync(esmDir)) {
         throw new Error("Missing @ffmpeg/core/dist/esm");
       }
 
-      const out = path.resolve("dist/ffmpeg");
+      const out = path.join(outputDir, "ffmpeg");
       fs.mkdirSync(out, { recursive: true });
 
       const must = ["ffmpeg-core.js", "ffmpeg-core.wasm"];
@@ -33,11 +37,15 @@ function copyFFmpegCore() {
 }
 
 function copyAutomationModules() {
+  let outputDir;
   return {
     name: "copy-automation-modules",
+    configResolved(config) {
+      outputDir = path.resolve(config.root, config.build.outDir);
+    },
     closeBundle() {
       const src = path.resolve("src/automation");
-      const out = path.resolve("dist/automation");
+      const out = path.join(outputDir, "automation");
 
       if (!fs.existsSync(src)) {
         throw new Error("Missing src/automation");

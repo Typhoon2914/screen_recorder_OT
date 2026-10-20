@@ -15,7 +15,12 @@ change Chrome permissions, or replace MediaRecorder/FFmpeg/saving.
 4. Under step 2 select that schedule and exact tab; confirm it is the correct
    channel, then click **Authorize selected Teams tab**. On that Teams tab,
    click Chrome Extensions > Screen Recorder EXPERIMENT once.
-5. Leave that tab on the configured channel. Keep Chrome, the recorder tab and
+5. Click **Check Teams readiness (no joining)** beside the authorized schedule.
+   This checks the saved team/channel against that exact tab without joining,
+   toggling controls, or requesting a capture stream. Authorization alone does
+   not mean auto-join or recording will succeed. A "meeting has not started"
+   result means there is no Join button yet; it is not a successful recording test.
+6. Leave that tab on the configured channel. Keep Chrome, the recorder tab and
    the PC awake. Closing/restarting Chrome or reloading the extension requires
    authorization again. A prior manual recording is NOT this authorization.
 
@@ -40,7 +45,11 @@ or changing the schedule cancels further join steps.
 
 Diagnostic events are kept locally in `automationJoinEvents` (latest 100),
 alongside existing recording and saving diagnostics. They contain status and
-schedule IDs, not credentials or meeting URLs.
+schedule IDs, not credentials or meeting URLs. Blocked identity checks now
+include the expected team/channel, the names from the tab title, and separate
+title/sidebar/selection match results. These names remain in local extension
+storage; review them before sharing diagnostics. Only rendering whitespace is
+normalized; case, punctuation and different team names are not fuzzy-matched.
 
 ## Limits and safety
 
@@ -68,6 +77,10 @@ includes waiting followed by one successful dispatch, not premature handling.
 
 `node scripts/teams-join-dom-validation.mjs` tests selectors against controlled
 HTML in real Chromium. These are fixtures, not real Teams acceptance.
+
+`node scripts/teams-preflight-ui-validation.mjs` checks the read-only readiness
+button in real Chromium with mocked extension APIs, including mismatch and
+authorization-expiry reporting. It does not prove Teams joining or media capture.
 
 `scripts/teams-auto-join-observe.mjs <artifact-directory> <isolated-profile>`
 observes an already configured real scheduled test. It does not click Join,
