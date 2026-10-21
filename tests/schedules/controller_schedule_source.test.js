@@ -95,7 +95,7 @@ test("schedule configuration: controller can obtain schedules from an async prov
 
   await controller.handleAlarm({ name: AUTOMATION_POLL_ALARM });
 
-  assert.equal(providerCalls, 1);
+  assert.ok(providerCalls >= 2, 'recheck configuration before dispatch, not only at poll start');
   assert.equal(calls.messages.length, 1);
   assert.equal(
     calls.messages[0].message.scheduleId,
@@ -130,7 +130,7 @@ test("schedule configuration: provider is evaluated on every automation poll", a
 
   await controller.handleAlarm({ name: AUTOMATION_POLL_ALARM });
 
-  assert.equal(providerCalls, 2);
+  assert.ok(providerCalls >= 3, 'poll again and revalidate the pending run before dispatch');
   assert.equal(calls.messages.length, 1);
 });
 

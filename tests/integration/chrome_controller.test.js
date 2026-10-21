@@ -278,7 +278,7 @@ test("chrome controller: successful dispatch persists the handled occurrence", a
 
   await controller.handleAlarm({ name: AUTOMATION_POLL_ALARM });
 
-  assert.deepEqual(calls.storageSets, [
+  assert.deepEqual(calls.storageSets.filter(value=>value.automationHandledOccurrenceKeys), [
     {
       automationHandledOccurrenceKeys: [
         "sunday-image-processing|2026-10-04|20:50"
@@ -310,5 +310,5 @@ test("chrome controller: failed recorder delivery does not mark the occurrence h
     /receiver unavailable/
   );
 
-  assert.equal(calls.storageSets.length, 0);
+  assert.equal(calls.storageSets.filter(value=>value.automationHandledOccurrenceKeys).length, 0);
 });

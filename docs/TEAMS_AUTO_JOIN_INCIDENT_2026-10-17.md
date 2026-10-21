@@ -77,3 +77,49 @@ Ignored evidence directory: `.test-artifacts/autojoin-diagnostics-2026-10-20/`
 contains `regression.txt`, `build.txt`, `dom-fixtures.txt`, `ui-fixtures.txt`,
 `preflight-ui-fixture.png`, `dist-isolation.txt`, and the candidate `dist/`.
 The screenshot depicts a mocked UI fixture, not a live Teams meeting.
+
+## Follow-up: live test-channel readiness result
+
+The user subsequently supplied a regular-Chrome readiness screenshot for
+`tEST / General`: `title=true`, `sidebar team=true`,
+`selected channel=false (count=0)`, with a session authorization present.
+This identifies the failed predicate in that test, not the precise HTML variant
+or the original lecture's saved settings. The old detector required a selected
+treeitem containing a separately marked channel-text descendant.
+
+The detector now recognizes explicit ARIA selected/current-page markers on a
+row, nested link or label, plus a selected tree row's accessible name when there
+is no separate text label. It does not fall back to title-only matching or an
+unselected channel label. Wrong and multiple selected channels still block.
+Additional browser fixtures cover these variants, no-selection, explicit false
+selection, ambiguity and wrong channels. All fixtures and 215 automated tests
+pass; the experimental dist was backed up and rebuilt successfully.
+
+Evidence: `.test-artifacts/teams-channel-selector-bee5969a57614303a0cc7ceff3328067/`.
+The previous isolated browser's debugging port was closed. The current tab's
+actual DOM could not be inspected; live readiness and scheduled join/capture/save
+after reloading this follow-up remain unverified. No new recording was produced
+by these fixture tests.
+
+## User-supplied DOM establishes the selection discrepancy
+
+The next video confirmed that the updated detector still found one visible
+channel label but no selected name. The user then supplied the actual General
+channel row: an anchor with `role="treeitem"`, `data-is-focusable="true"`,
+`aria-selected="false"`, and the usual channel-list-item/text descendants.
+The accompanying DevTools screenshot shows a matched atomic CSS rule applying
+`background-color: var(--colorNeutralBackground4Selected)` to that same row.
+The displayed channel is visually selected despite its false ARIA flag.
+
+A sanitized fixture reproduces the discrepancy (without real channel IDs).
+The adapter now accepts that specific visual-selection evidence only when the
+row matches a simple class rule explicitly using the selected-background token
+and its computed opaque background actually equals that token. It does not
+hardcode generated class names or accept a matching color alone. Inaccessible
+stylesheets fail closed; hover/focus selectors, overrides, transparent tokens,
+wrong names, multiple selected rows and inconsistent title/team evidence do not
+authorize a join. Existing exact title/team checks remain required.
+
+The sanitized reproduction failed before this correction and passed afterward.
+This explains the test-channel selected-count failure; successful joining,
+capture and saving in the user's current browser still need live confirmation.

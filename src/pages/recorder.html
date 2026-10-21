@@ -24,7 +24,14 @@
       </div>
     </header>
 
-    <main class="grid">
+    <nav class="workspaceTabs" role="tablist" aria-label="Recorder workspace">
+      <button class="btn" role="tab" id="tab-schedules" aria-controls="schedulesPanel" aria-selected="true">Schedules</button>
+      <button class="btn" role="tab" id="tab-record" aria-controls="recordPanel" aria-selected="false" tabindex="-1">Record now</button>
+      <button class="btn" role="tab" id="tab-history" aria-controls="historyPanel" aria-selected="false" tabindex="-1">History</button>
+      <button class="btn" role="tab" id="tab-logs" aria-controls="logsPanel" aria-selected="false" tabindex="-1">Logs</button>
+    </nav>
+    <p class="workspaceNotice">Keep Chrome, this recorder and the authorized Teams tab open, and the computer awake.</p>
+    <main class="grid" id="recordPanel" role="tabpanel" aria-labelledby="tab-record" hidden>
       <section class="panel">
         <div class="actions">
           <button class="btn primary" id="startBtn">🎬 Start Recording</button>
@@ -37,8 +44,8 @@
         <label><input id="includeAudio" type="checkbox" checked /> Include shared audio (required for scheduled recordings)</label>
         <p class="notice">Files save automatically to Chrome's download folder. Keep this tab open until Saved. Alt+Shift+S stops recording.</p>
         <details>
-          <summary>Advanced: keep a manual capture armed</summary>
-          <p>This older method keeps a sharing stream open. For fresh scheduled Teams capture, use the schedule setup below instead. A stopped manual recording does not authorize future schedules.</p>
+          <summary>Advanced: other screen/window — keep sharing open</summary>
+          <p>For a manual-provider schedule, choose a source now and keep sharing open until it records. For Teams, use Prepare recording in Schedules instead. Stopping a manual recording does not authorize future schedules.</p>
           <label>Schedule <select id="armSchedule"></select></label>
           <label><input type="checkbox" id="readyCheck" /> I am joined, past any lobby, and will choose the correct tab with audio.</label>
           <button class="btn" id="armBtn">Choose capture and arm</button>
@@ -79,9 +86,16 @@
         </div>
       </section>
     </main>
-    <section class="panel schedulePanel">
-      <details>
-      <summary>Advanced: optional native companion (not needed for Teams tab capture)</summary>
+    <section class="panel schedulePanel" id="schedulesPanel" role="tabpanel" aria-labelledby="tab-schedules">
+      <h2>Schedules</h2>
+      <p>Save a time, then prepare its Teams tab. Nothing joins when you prepare; joining happens during the scheduled start window.</p>
+      <button class="btn primary" id="newSchedule" type="button">New schedule</button>
+      <p id="scheduleStatus" role="status"></p>
+      <div id="scheduleList"></div>
+      <details id="scheduleEditor">
+      <summary>Schedule details</summary>
+      <details id="nativeSettings" hidden>
+      <summary>Developer settings: optional native companion</summary>
       <h2>Windows native companion (experimental)</h2>
       <p>Use a separately configured, already-joined meeting window. Native capture does not use Chrome's picker and does not join meetings or resolve lobbies. Keep the companion and isolated OBS running. Do not use manual capture concurrently.</p>
       <label><input id="nativeEnabled" type="checkbox" /> Run schedules through the native companion</label>
@@ -90,46 +104,66 @@
       <button class="btn" id="nativeRefresh" type="button">Refresh native status</button>
       <p id="nativeStatus" role="status">Native companion disabled</p>
       </details>
-      <h2>Schedule a lecture</h2>
-      <p>1. Save the schedule. 2. Authorize its Teams tab once. 3. Keep Chrome and both tabs open, and the PC awake. Times use this computer's clock. Set a date for a one-off recording; otherwise it repeats weekly.</p>
-      <div id="tabAuthorizationSetup">
-      <h3>2. Allow this Teams tab to record later</h3>
+      <details id="tabAuthorizationSetup">
+      <summary>Prepare recording</summary>
       <p>Select the saved schedule and its tab, then click the authorization button. On the Teams tab, click Extensions → Screen Recorder EXPERIMENT once. Do not click Start Recording or Choose capture and arm. Chrome restart requires this step again.</p>
       <label>Schedule <select id="authorizationSchedule"></select></label>
       <label>Existing target <select id="authorizationTarget"></select></label>
       <label><input id="authorizationReady" type="checkbox" /> This is the correct tab. With auto-join, I have left it on the configured Teams channel; otherwise I have already joined.</label>
       <button id="authorizationRefresh" class="btn" type="button">Refresh target/status</button>
-      <button id="authorizeTarget" class="btn primary" type="button">Authorize selected Teams tab</button>
-      <p id="authorizationStatus" role="status">No permanent capture permission is stored. Reauthorize after Chrome restart or grant loss.</p>
+      <button id="authorizeTarget" class="btn primary" type="button">Prepare selected Teams tab</button>
+      <div id="authorizationStatus" class="setupFeedback setupFeedback-info" role="status" aria-live="polite" aria-atomic="true"><strong>Prepare the tab, then check readiness</strong><span>Authorization lasts for this browser session. Reauthorize after Chrome restart or grant loss. Each button result will appear here and in Logs.</span></div>
       <div id="authorizationList"></div>
-      </div>
+      </details>
       <form id="scheduleForm">
-        <h3>1. Choose the channel and recording time</h3>
+        <h3>Choose the channel and recording time</h3>
         <label>Open Teams tab <select id="setupTeamsTab"></select></label>
         <button class="btn" id="refreshTeamsTabs" type="button">Refresh Teams tabs</button>
         <button class="btn" id="useTeamsTab" type="button">Use this tab</button>
         <input id="scheduleId" type="hidden" />
         <label>Lecture name <input id="lectureName" required maxlength="200" /></label>
-        <label>Weekday <select id="weekday"><option>Sunday</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></label>
-        <label>Only on this date (optional) <input id="runDate" type="date" /></label>
+        <label>Repeat <select id="repeatMode"><option value="once">Once</option><option value="weekly">Weekly</option></select></label>
+        <label id="weekdayField" hidden>Weekday <select id="weekday"><option>Sunday</option><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option></select></label>
+        <label id="dateField">Date <input id="runDate" type="date" required /></label>
         <label>Local time <input id="scheduleTime" type="time" required /></label>
         <label>Duration (minutes) <input id="scheduleDuration" type="number" min="1" max="1440" value="60" required /></label>
+        <label><input id="teamsAutoJoin" type="checkbox" checked /> Join the channel meeting automatically before recording</label>
+        <p id="selectedChannelSummary">Choose the Teams channel tab above. Its team and channel names will be filled in for you.</p>
+        <details id="advancedSchedule">
+        <summary>Advanced target and retry settings</summary>
         <label>Meeting URL <input id="targetUrl" type="url" placeholder="https://teams.microsoft.com/…" /></label>
-        <label>Capture provider <select id="captureMode"><option value="manual">Manual / pre-armed capture</option><option value="tab">Authorized tab — fresh unattended capture</option></select></label>
-        <label><input id="teamsAutoJoin" type="checkbox" /> Join the channel meeting automatically before recording</label>
+        <label>Capture provider <select id="captureMode"><option value="tab">Authorized Teams tab</option><option value="manual">Other screen/window — keep sharing open</option></select></label>
         <label>Exact Teams team name <input id="teamsTeam" maxlength="200" placeholder="Advanced Artificial Intelligence" /></label>
         <label>Exact channel name <input id="teamsChannel" maxlength="200" value="General" /></label>
         <label>If the meeting is late, retry for (minutes) <input id="joinWaitMinutes" type="number" min="1" max="60" value="15" /></label>
-        <p class="notice">Auto-join keeps microphone and camera off. It cannot pass sign-in, permission prompts or lobby admission. Recording requires audible audio at startup. Duration starts when capture actually begins.</p>
+        </details>
+        <p class="notice">Auto-join keeps microphone and camera off. It cannot pass sign-in, permission prompts or lobby admission. Recording requires live audio/video tracks; silence produces a warning but does not prevent recording. Duration starts when capture actually begins.</p>
         <label><input id="scheduleEnabled" type="checkbox" checked /> Enabled</label>
         <button class="btn primary" type="submit">Save schedule</button>
         <button class="btn" id="cancelEdit" type="button">Clear form</button>
       </form>
-      <p id="scheduleStatus" role="status"></p>
-      <div id="scheduleList"></div>
+      </details>
+      <details class="developerSettings">
+        <summary>Developer settings</summary>
+        <div id="nativeSettingsHost"></div>
+      </details>
+    </section>
+    <section class="panel" id="historyPanel" role="tabpanel" aria-labelledby="tab-history" hidden>
       <h2>Recording history</h2>
       <div id="historyList"></div>
-      <h2>Automation diagnostics</h2><p id="automationDiagnostic">No reported failures</p>
+      <p>Playback and retry-save controls for the latest recording are in Record now.</p>
+    </section>
+    <section class="panel" id="logsPanel" role="tabpanel" aria-labelledby="tab-logs" hidden>
+      <h2>Live activity log</h2>
+      <p>Latest 500 events, updated while this page is open. Retry times are estimates for the next scheduler check, not exact-second promises.</p>
+      <div class="actions">
+        <button class="btn" id="copyLogs" type="button">Copy logs</button>
+        <button class="btn" id="exportLogs" type="button">Export logs</button>
+        <label><input type="checkbox" id="followLogs" checked /> Follow latest</label>
+      </div>
+      <p id="logStatus" role="status"></p>
+      <h3>Last scheduler message</h3><p id="automationDiagnostic">No scheduler message yet</p>
+      <ol id="activityLog" aria-label="Timestamped activity"></ol>
     </section>
   </div>
 

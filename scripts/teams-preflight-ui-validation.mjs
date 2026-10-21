@@ -28,19 +28,30 @@ try{
    }}
   };
  });
- await page.addScriptTag({content:await fs.readFile('src/scripts/tab_capture_ui.js','utf8')});
+ const feedbackUrl='data:text/javascript;base64,'+Buffer.from(await fs.readFile('src/automation/setup_feedback.js','utf8')).toString('base64');
+ await page.addScriptTag({type:'module',content:(await fs.readFile('src/scripts/tab_capture_ui.js','utf8')).replace('../automation/setup_feedback.js',feedbackUrl)});
  const check=page.getByRole('button',{name:'Check Teams readiness (no joining)',exact:true});
  await check.waitFor();
  assert.equal(await check.count(),1);
  assert.match(await page.locator('#authorizationList').innerText(),/does not verify auto-join/);
  await check.click();
  await page.waitForFunction(()=>document.getElementById('authorizationStatus').textContent.includes('Expected Advanced AI'));
+ assert.match(await page.locator('#authorizationStatus').getAttribute('class'),/setupFeedback-error/);
+ assert.match(await page.locator('#authorizationList .setupFeedback strong').innerText(),/Not ready/);
  assert.deepEqual((await page.evaluate(()=>window.requests)).filter(r=>r.type!=='TAB_CAPTURE_STATUS'),
   [{type:'TAB_CAPTURE_TEAMS_PREFLIGHT',scheduleId:'lecture'}]);
  await page.evaluate(()=>{window.response={ok:false,error:'Reauthorization required'};});
  await check.click();
- await page.waitForFunction(()=>document.getElementById('authorizationStatus').textContent==='Reauthorization required');
+ await page.waitForFunction(()=>document.getElementById('authorizationStatus').textContent.includes('Reauthorization required'));
  assert.equal(await check.isEnabled(),true);
+ await page.evaluate(()=>{window.response={ok:true,result:{state:'waiting',reason:'Meeting has not started in the configured channel'}};});
+ await check.click();
+ await page.waitForFunction(()=>document.getElementById('authorizationStatus').textContent.includes('Setup confirmed'));
+ assert.match(await page.locator('#authorizationList .setupFeedback').innerText(),/no meeting is available to join now/);
+ assert.match(await page.locator('#authorizationStatus').getAttribute('class'),/setupFeedback-warning/);
+ await page.locator('#authorizationRefresh').click();
+ await page.waitForFunction(()=>document.getElementById('authorizationStatus').textContent.includes('Status refreshed'));
+ assert.equal(await page.evaluate(()=>window.requests.filter(r=>r.type==='TAB_CAPTURE_STATUS').at(-1).userInitiated),true);
  if(process.argv[2]){
   const out=path.resolve(process.argv[2]);await fs.mkdir(out,{recursive:true});
   await page.screenshot({path:path.join(out,'preflight-ui-fixture.png')});

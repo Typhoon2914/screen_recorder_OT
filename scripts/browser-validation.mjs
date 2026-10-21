@@ -69,16 +69,21 @@ try {
   await page.waitForFunction(()=>!document.getElementById('startBtn').disabled);
   await page.screenshot({path:path.join(out,'01-idle.png'),fullPage:true});
   const date=new Date();
+  await page.getByRole('button',{name:'New schedule',exact:true}).click();
   await page.locator('#lectureName').fill('Synthetic scheduled lecture');
+  await page.locator('#repeatMode').selectOption('weekly');
   await page.locator('#weekday').selectOption(['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()]);
   await page.locator('#scheduleTime').fill(date.toTimeString().slice(0,5));
   await page.locator('#scheduleDuration').fill('1');
   await page.locator('#scheduleEnabled').uncheck();
+  await page.locator('#advancedSchedule > summary').click();
+  await page.locator('#captureMode').selectOption('manual');
   await page.getByRole('button',{name:'Save schedule',exact:true}).click();
-  await page.waitForFunction(()=>document.getElementById('scheduleStatus').textContent==='Schedule saved');
+  await page.waitForFunction(()=>document.getElementById('scheduleStatus').textContent.startsWith('Schedule saved'));
   assert.match(await page.locator('#scheduleList').innerText(),/Synthetic scheduled lecture/);
   results.push({test:'schedule create and persist',passed:true});
   await page.screenshot({path:path.join(out,'02-schedule.png'),fullPage:true});
+  await page.getByRole('tab',{name:'Record now',exact:true}).click();
   await page.locator('#recordingTitle').fill('Synthetic manual capture');
   await page.locator('#startBtn').click();
   await page.waitForFunction(()=>document.getElementById('statusPill').textContent==='Recording');
@@ -111,12 +116,14 @@ try {
   // Real alarm + service worker + runtime transport, using an explicitly armed
   // synthetic stream. No chooser or account authorization is inferred.
   await page.locator('#formatChoice').selectOption('webm');
+  await page.getByRole('tab',{name:'Schedules',exact:true}).click();
   await page.getByRole('button',{name:'Edit',exact:true}).click();
   await page.locator('#scheduleTime').fill(new Date().toTimeString().slice(0,5));
   await page.getByRole('button',{name:'Save schedule',exact:true}).click();
   await page.getByRole('button',{name:'Enable',exact:true}).click();
   const scheduleId=await page.evaluate(async()=> (await chrome.storage.local.get('automationSchedules')).automationSchedules[0].id);
-  await page.locator('summary').click();
+  await page.getByRole('tab',{name:'Record now',exact:true}).click();
+  await page.locator('#recordPanel details > summary').click();
   await page.locator('#armSchedule').selectOption(scheduleId);await page.locator('#readyCheck').check();
   await page.locator('#armBtn').click();
   await page.waitForFunction(()=>document.getElementById('detail').textContent.startsWith('Armed'));
@@ -150,12 +157,19 @@ try {
   assert.equal(await page.locator('#startBtn').isDisabled(),true);
   await page.screenshot({path:path.join(out,'08-save-failed-protected.png'),fullPage:true});
   await page.reload();
+  await page.getByRole('tab',{name:'Record now',exact:true}).click();
   await page.waitForFunction(()=>document.getElementById('detail').textContent.startsWith('Recovered finalized recording'));
   assert.equal(await page.locator('#startBtn').isDisabled(),true);
   await page.locator('#downloadBtn').click();
   await page.waitForFunction(()=>document.getElementById('statusPill').textContent==='saved');
   await page.screenshot({path:path.join(out,'09-recovered-saved.png'),fullPage:true});
   results.push({test:'save failure protects recording; reload recovers finalized blob and retry verifies save',passed:true});
+  await page.getByRole('tab',{name:'Logs',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#activityLog').textContent.includes('Download completed and file verified.'));
+  const {automationActivityLog}=await page.evaluate(()=>chrome.storage.local.get('automationActivityLog'));
+  for(const event of ['schedule_changed','run_attempt','recording_started','capture_stopped','saving','saved','save_failed'])assert.ok(automationActivityLog.some(item=>item.event===event),`Missing log event ${event}`);
+  await page.screenshot({path:path.join(out,'10-live-logs.png'),fullPage:true});
+  results.push({test:'real worker logs show separate recording, stop, saving, failure and verified-save events',passed:true});
   assert.deepEqual(errors,[]);
 } catch(error){
   results.push({test:'browser validation',passed:false,error:error.stack});

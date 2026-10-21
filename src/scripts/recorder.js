@@ -6,6 +6,7 @@ import {recorderOptions} from '../automation/recording_options.js';
 import {acquireAuthorizedTab} from '../automation/tab_capture.js';
 import './tab_capture_ui.js';
 import "./schedule_ui.js";
+import "./workspace_ui.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -73,6 +74,7 @@ async function persistDownloadId(downloadId) {
 
 async function saveFinalized() {
   try {
+    captureEvidence('saving',{...recordingContext}).catch(console.warn);
     const item=await saveSession.retry();
     if(!item)return;
     detail.textContent=`Saved and verified: ${item.filename}`;
@@ -214,6 +216,7 @@ async function startRecording() {
       }});
       recordingContext.targetTabId=authorizedTargetId;
       recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;
+      recordingContext.audioSilentAtStart=authorizedCapture.silentAtStart;
     }
     const stream = authorizedCapture?.stream || armedStream || await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -232,6 +235,7 @@ async function startRecording() {
     detail.textContent = "Stabilizing…";
     await sleep(1000);
     await waitForStableDims(track);
+    if(automationRequest?.durationMinutes!=null)await captureRequest('AUTOMATION_VALIDATE_START',automationRequest);
     if(automationRequest?.captureMode==='tab'){
       const checked=await captureRequest('TAB_CAPTURE_CHECK',automationRequest);
       if(checked.tabId!==authorizedTargetId)throw Error('Authorized target changed during capture setup');
@@ -263,6 +267,7 @@ async function startRecording() {
     mediaRecorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     mediaRecorder.onstop = handleStop;
     mediaRecorder.start();
+    if(recordingWarnings.length)detail.textContent='Recording — '+recordingWarnings.join(' ');
     captureEvidence('recording_started',{...recordingContext,tracks:stream.getTracks().map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
     if(!stream.getAudioTracks().length){recordingWarnings.push('Video only: no shared audio track');detail.textContent=recordingWarnings[0];}
     const duration=automationRequest?.durationMinutes;
@@ -319,6 +324,7 @@ async function startRecording() {
 }
 
 async function handleStop() {
+  captureEvidence('capture_stopped',{...recordingContext}).catch(console.warn);
   clearInterval(timerHandle);
   clearTimeout(deadlineTimer);
   $('pauseBtn').disabled=true;

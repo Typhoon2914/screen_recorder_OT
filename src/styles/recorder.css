@@ -275,3 +275,31 @@ details, .notice { font-size:14px; line-height:1.6; margin-top:16px; }
 button:disabled { opacity:.5; cursor:not-allowed; }
 body { background-attachment:fixed; }
 #historyList, #detail { overflow-wrap:anywhere; }
+[hidden] { display:none !important; }
+.workspaceTabs { display:flex; gap:8px; margin:20px 0 8px; flex-wrap:wrap; }
+.workspaceTabs .btn { background:#1b293e; color:var(--text); border:1px solid var(--stroke); }
+.workspaceTabs [aria-selected=true] { background:#3562b8; border-color:#63d4ff; }
+.workspaceNotice { color:var(--muted); font-size:14px; }
+[role=tabpanel] { margin-top:16px; }
+summary { cursor:pointer; font-weight:700; }
+#advancedSchedule { grid-column:1 / -1; }
+#scheduleEditor, #tabAuthorizationSetup { padding:16px; border:1px solid var(--stroke); border-radius:12px; margin-top:16px; }
+.scheduleRow .scheduleSummary { display:flex; flex-direction:column; gap:6px; flex:1; min-width:240px; }
+.scheduleRow small { color:var(--muted); }
+.developerSettings { margin-top:28px; color:var(--muted); }
+#activityLog { max-height:55vh; overflow:auto; padding:0 0 0 24px; overflow-wrap:anywhere; font-size:14px; }
+#activityLog li { padding:10px; border-bottom:1px solid var(--stroke); white-space:pre-wrap; }
+.log-warning { color:#ffcf7b; }
+.log-error { color:#ff9ba6; }
+button:focus-visible, summary:focus-visible { outline:3px solid #63d4ff; outline-offset:3px; }
+.setupFeedback { margin:14px 0; padding:14px 16px; border:1px solid #72c9ff; border-left:5px solid #72c9ff; border-radius:10px; background:#152b42; overflow-wrap:anywhere; }
+.setupFeedback strong, .setupFeedback span, .setupFeedback small { display:block; }
+.setupFeedback strong { font-size:16px; margin-bottom:6px; }
+.setupFeedback span { line-height:1.55; }
+.setupFeedback small { margin-top:8px; opacity:.8; }
+.setupFeedback-success { border-color:#6bddad; background:#12352d; }
+.setupFeedback-warning { border-color:#ffd17c; background:#3b2d16; }
+.setupFeedback-error { border-color:#ff9fae; background:#3c2029; }
+.setupFeedback details { margin-top:6px; }
+.authorizationCard { padding:14px 0; border-top:1px solid var(--stroke); line-height:1.6; }
+.authorizationCard > button { margin-top:8px; margin-right:8px; }

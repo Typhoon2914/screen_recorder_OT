@@ -3,10 +3,25 @@ import {getNextRun} from '../automation/scheduler.js';
 const $=id=>document.getElementById(id);
 let schedules=[];
 const report=error=>{$('scheduleStatus').textContent=error.message || String(error);};
-// Keep the primary schedule flow above manual controls; preserve all existing IDs.
-const panel=document.querySelector('.schedulePanel');
-document.querySelector('.grid').before(panel);
-$('scheduleForm').after($('tabAuthorizationSetup'));
+$('scheduleEditor').after($('tabAuthorizationSetup'));
+function repeatFields(){
+  const once=$('repeatMode').value==='once';
+  $('dateField').hidden=!once;$('runDate').required=once;
+  $('weekdayField').hidden=once;
+}
+function channelSummary(){
+  $('selectedChannelSummary').textContent=$('teamsTeam').value
+    ?`${$('teamsTeam').value} → ${$('teamsChannel').value}`:'Choose a Teams channel tab, then Use this tab.';
+}
+function resetForm(){
+  $('scheduleForm').reset();$('scheduleId').value='';
+  $('runDate').value=nowParts().date;delete $('weekday').dataset.original;
+  repeatFields();channelSummary();
+}
+$('repeatMode').onchange=repeatFields;
+$('captureMode').onchange=()=>{if($('captureMode').value==='manual')$('teamsAutoJoin').checked=false;};
+$('teamsTeam').oninput=channelSummary;$('teamsChannel').oninput=channelSummary;
+$('newSchedule').onclick=()=>{resetForm();$('scheduleEditor').open=true;};
 async function refreshTeamsTabs(){
   const previous=$('setupTeamsTab').value;
   $('setupTeamsTab').replaceChildren(new Option('Choose the Teams channel tab',''));
@@ -24,6 +39,7 @@ $('useTeamsTab').onclick=async()=>{
     $('targetUrl').value=tab.url;$('captureMode').value='tab';
     const parts=(tab.title || '').split(' | ');
     if(parts.length===4 && parts[0]==='Teams and Channels'){$('teamsTeam').value=parts[1];$('teamsChannel').value=parts[2];}
+    channelSummary();
     $('scheduleStatus').textContent='Target selected. Check the exact team/channel names and save the schedule.';
   }catch(error){report(error);}
 };
@@ -53,28 +69,47 @@ async function render(){
   $('scheduleList').replaceChildren();
   const selected=$('armSchedule').value;
   $('armSchedule').replaceChildren(new Option('Select a schedule',''));
+  const {automationRuns={}}=await chrome.storage.local.get('automationRuns');
   for(const s of schedules){
     if(s.enabled)$('armSchedule').add(new Option(s.title || s.id,s.id));
     const row=document.createElement('div');row.className='scheduleRow';
-    const label=document.createElement('span');
+    const label=document.createElement('div');label.className='scheduleSummary';
     const next=getNextRun([s],nowParts());
-    label.textContent=`${s.title || s.id} · ${s.runDate || s.weekdays.join(', ')} ${s.time} · ${s.durationMinutes || 'manual'} min · ${s.enabled?(next?'Next '+next.date+' '+next.time:'No future run'):'Disabled'}`;
+    const title=document.createElement('strong');title.textContent=s.title || s.id;
+    const timing=document.createElement('span');timing.textContent=`${s.runDate?'Once · '+s.runDate:'Weekly · '+s.weekdays.join(', ')} ${s.time} · ${s.durationMinutes || 'manual'} min`;
+    const status=document.createElement('small');
+    const run=automationRuns[s.id];
+    status.textContent=`${s.teamsTeam || 'Manual target'} → ${s.teamsChannel || ''} · ${s.enabled?(next?'Next '+next.date+' '+next.time:'No future run'):'Disabled'}${run?' · Last run: '+run.state.replaceAll('_',' '):''}`;
+    label.append(title,timing,status);
     row.append(label,button('Edit',()=>{
       $('scheduleId').value=s.id;$('lectureName').value=s.title || s.id;
       $('weekday').value=s.weekdays[0];$('scheduleTime').value=s.time;
       $('runDate').value=s.runDate || '';
+      $('repeatMode').value=s.runDate?'once':'weekly';repeatFields();
       $('scheduleDuration').value=s.durationMinutes || 60;$('targetUrl').value=s.targetUrl || '';$('scheduleEnabled').checked=s.enabled;
       $('captureMode').value=s.captureMode || 'manual';
       $('teamsAutoJoin').checked=s.teamsAutoJoin===true;$('teamsTeam').value=s.teamsTeam || '';$('teamsChannel').value=s.teamsChannel || 'General';$('joinWaitMinutes').value=s.joinWaitMinutes || 15;
       $('scheduleStatus').textContent=s.weekdays.length>1?'Editing preserves the existing weekdays; changing weekday replaces them.':'';
       $('weekday').dataset.original=s.weekdays[0];
+      channelSummary();$('scheduleEditor').open=true;
     }),button(s.enabled?'Disable':'Enable',async()=>{
       await updateSchedules(chrome,items=>items.map(item=>item.id===s.id?{...item,enabled:!item.enabled}:item));await render();
     }),button('Delete',async()=>{
       if(!confirm(`Delete schedule “${s.title || s.id}”?`))return;
       await updateSchedules(chrome,items=>items.filter(item=>item.id!==s.id));await render();
     }));
-    if(s.targetUrl)row.append(button('Open target',()=>chrome.tabs.create({url:s.targetUrl})));
+    if(s.captureMode==='tab')row.append(button('Prepare recording',async()=>{
+      $('tabAuthorizationSetup').open=true;
+      document.dispatchEvent(new CustomEvent('prepare-schedule',{detail:{scheduleId:s.id}}));
+      $('tabAuthorizationSetup').scrollIntoView({block:'nearest'});
+    }));
+    if(['joining','retry_pending','starting','recording'].includes(run?.state))row.append(button('Cancel this run',async()=>{
+      if(run?.state==='recording' && !confirm('Stop and save this recording, and cancel retries for this run?'))return;
+      const result=await chrome.runtime.sendMessage({type:'AUTOMATION_CANCEL_RUN',scheduleId:s.id});
+      if(!result?.ok)throw Error(result?.error || 'Cancellation failed');
+      $('scheduleStatus').textContent='This occurrence is cancelled. Future weekly occurrences remain enabled.';
+      await render();
+    }));
     $('scheduleList').append(row);
   }
   $('armSchedule').value=selected;
@@ -91,15 +126,21 @@ $('scheduleForm').addEventListener('submit',async event=>{
     const existing=schedules.find(s=>s.id===id);
     const schedule={...existing,id,title:$('lectureName').value.trim(),weekdays:existing && $('weekday').value===$('weekday').dataset.original?existing.weekdays:[$('weekday').value],time:$('scheduleTime').value,durationMinutes:Number($('scheduleDuration').value),targetUrl:$('targetUrl').value.trim(),enabled:$('scheduleEnabled').checked,launchWindowSeconds:120};
     schedule.captureMode=$('captureMode').value;
-    if($('runDate').value){schedule.runDate=$('runDate').value;schedule.weekdays=[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(schedule.runDate+'T00:00:00Z').getUTCDay()]];}else delete schedule.runDate;
+    if($('repeatMode').value==='once'){
+      if(!$('runDate').value)throw Error('Choose a date for a one-off recording');
+      schedule.runDate=$('runDate').value;schedule.weekdays=[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(schedule.runDate+'T00:00:00Z').getUTCDay()]];
+    }else delete schedule.runDate;
     schedule.teamsAutoJoin=$('teamsAutoJoin').checked;
     schedule.teamsTeam=$('teamsTeam').value.trim();schedule.teamsChannel=$('teamsChannel').value.trim();
     schedule.joinWaitMinutes=Number($('joinWaitMinutes').value);
     if(schedule.teamsAutoJoin)schedule.launchWindowSeconds=schedule.joinWaitMinutes*60;
     await updateSchedules(chrome,items=>[...items.filter(s=>s.id!==id),schedule]);
-    $('scheduleForm').reset();$('scheduleId').value='';await render();$('scheduleStatus').textContent='Schedule saved';
+    resetForm();$('scheduleEditor').open=false;await render();$('scheduleStatus').textContent='Schedule saved. Use Prepare recording to authorize/check its Teams tab.';
   }catch(error){report(error);}
 });
-$('cancelEdit').onclick=()=>{$('scheduleForm').reset();$('scheduleId').value='';};
-chrome.storage.onChanged.addListener(()=>render().catch(report));
+$('cancelEdit').onclick=()=>{resetForm();$('scheduleEditor').open=false;};
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if(area==='local' && ['automationSchedules','automationRuns','recordingHistory','automationDiagnostic'].some(key=>changes[key]))render().catch(report);
+});
+resetForm();
 render().catch(report);

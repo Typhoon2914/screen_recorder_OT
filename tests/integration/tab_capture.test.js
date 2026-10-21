@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createTabAuthorization} from '../../src/automation/tab_authorization.js';
-import {acquireAuthorizedTab,validateAudioLevels} from '../../src/automation/tab_capture.js';
+import {acquireAuthorizedTab,assessStartupAudio} from '../../src/automation/tab_capture.js';
 
 function harness(){
   const local={automationSchedules:[{id:'a',enabled:true,captureMode:'tab',targetUrl:'https://example.test/meeting',durationMinutes:1}]},session={};
@@ -52,14 +52,42 @@ test('multiple matching schedules reuse one explicit tab authorization; ambiguit
   await h.manager.prepare('b',5);
   await h.manager.revoke(42,'closed');await assert.rejects(()=>h.manager.check('b'),/reauthor/i);
 });
-test('signal validation rejects missing, silent and invalid samples, retains quiet speech',()=>{
-  for(const samples of [[],[-Infinity],[-90,-80],[NaN],[Infinity]])assert.throws(()=>validateAudioLevels(samples),/silent|invalid/i);
-  assert.equal(validateAudioLevels([-Infinity,-50,-40]).peakDbfs,-40);
+test('signal validation rejects missing and invalid samples, retains quiet speech',()=>{
+  for(const samples of [[],[NaN],[Infinity]])assert.throws(()=>assessStartupAudio(samples),/missing|invalid/i);
+  assert.equal(assessStartupAudio([-Infinity,-50,-40]).peakDbfs,-40);
+});
+test('silent or quiet live audio is a warning rather than a start blocker',()=>{
+ for(const samples of [[-Infinity],[-90,-80]]){
+  const result=assessStartupAudio(samples);
+  assert.equal(result.silent,true);
+  assert.match(result.warning,/silent|quiet/i);
+ }
+ assert.equal(assessStartupAudio([-Infinity]).peakDbfs,null);
+ assert.equal(assessStartupAudio([-50,-40]).silent,false);
+ assert.equal(assessStartupAudio([-50,-40]).warning,null);
 });
 function fakeStream(){const tracks=['audio','video'].map(kind=>({kind,readyState:'live',stop(){this.readyState='ended';}}));return {getTracks:()=>tracks,getVideoTracks:()=>tracks.filter(t=>t.kind==='video'),getAudioTracks:()=>tracks.filter(t=>t.kind==='audio')};}
 test('tab adapter never calls a picker and fully releases tracks on readiness failure',async()=>{
-  const stream=fakeStream();await assert.rejects(()=>acquireAuthorizedTab({streamId:'id',getUserMedia:async()=>stream,inspect:async()=>{throw Error('silent');}}),/silent/);
+  const stream=fakeStream();await assert.rejects(()=>acquireAuthorizedTab({streamId:'id',getUserMedia:async()=>stream,inspect:async()=>{throw Error('Audio monitor failed');}}),/monitor failed/);
   assert.ok(stream.getTracks().every(t=>t.readyState==='ended'));
+});
+test('silent-start capture retains live tracks and reports a warning before recording',async()=>{
+ const stream=fakeStream(),warnings=[];let closed=0;
+ const capture=await acquireAuthorizedTab({streamId:'id',getUserMedia:async()=>stream,onSilence:message=>warnings.push(message),
+  inspect:async()=>({...assessStartupAudio([-Infinity]),close:async()=>{closed++;}})});
+ assert.equal(capture.silentAtStart,true);
+ assert.equal(capture.peakDbfs,null);
+ assert.equal(warnings.length,1);
+ assert.match(warnings[0],/recording|capture/i);
+ assert.ok(stream.getTracks().every(t=>t.readyState==='live'));
+ await capture.release();
+ assert.equal(closed,1);
+ assert.ok(stream.getTracks().every(t=>t.readyState==='ended'));
+});
+test('silent-start policy still rejects an ended video track',async()=>{
+ const stream=fakeStream();stream.getVideoTracks()[0].stop();
+ await assert.rejects(()=>acquireAuthorizedTab({streamId:'id',getUserMedia:async()=>stream,inspect:async()=>assessStartupAudio([-Infinity])}),/video track/);
+ assert.ok(stream.getTracks().every(t=>t.readyState==='ended'));
 });
 test('tab adapter validates both track types and returns explicit cleanup',async()=>{
   const stream=fakeStream();let closed=0;
