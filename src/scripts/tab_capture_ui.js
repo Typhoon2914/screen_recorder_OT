@@ -3,7 +3,11 @@ const $=id=>document.getElementById(id);
 let refreshing=false;
 let queuedSchedule=null;
 let queuedUserRefresh=false;
+let refreshAgain=false;
+let selectionFeedback=false;
 const readinessResults=new Map();
+function clearReadiness(){readinessResults.clear();document.dispatchEvent(new CustomEvent('tab-readiness-cleared'));}
+function publishReadiness(scheduleId,result){document.dispatchEvent(new CustomEvent('tab-readiness-result',{detail:{scheduleId,result}}));}
 function displayFeedback(element,feedback){
   element.className='setupFeedback setupFeedback-'+feedback.tone;
   element.setAttribute('role','status');element.setAttribute('aria-live','polite');element.setAttribute('aria-atomic','true');
@@ -25,7 +29,7 @@ async function send(type,data={}){
   return result;
 }
 async function refresh(userInitiated=false){
-  if(refreshing){queuedUserRefresh ||= userInitiated;return;}refreshing=true;
+  if(refreshing){queuedUserRefresh ||= userInitiated;refreshAgain=true;return;}refreshing=true;
   let statusReceived=false;
   try{
     if(userInitiated)feedback('info','Refreshing target/status…','Checking saved tab authorizations. This will not join a meeting or start recording.');
@@ -43,7 +47,9 @@ async function refresh(userInitiated=false){
     for(const tab of await chrome.tabs.query({})){
       if(s && tab.url===s.targetUrl)$('authorizationTarget').add(new Option(`Tab ${tab.id}: ${tab.title} — ${tab.url}`,String(tab.id)));
     }
-    $('authorizationTarget').value=previous;
+    const binding=result.items.find(item=>item.scheduleId===s?.id && item.available);
+    $('authorizationTarget').value=previous || (binding?String(binding.tabId):'');
+    document.dispatchEvent(new CustomEvent('tab-preparation-status',{detail:result.items}));
     $('authorizationList').replaceChildren();
     for(const item of result.items){
       const row=document.createElement('div');row.className='authorizationCard';
@@ -64,9 +70,11 @@ async function refresh(userInitiated=false){
               const summary=workerFeedback || readinessFeedback(result);
               const value=feedback(summary.tone,item.title+' — '+summary.title,summary.message,result.reason);
               readinessResults.set(item.scheduleId,value);displayFeedback(outcome,value);outcome.scrollIntoView({block:'nearest'});
+              publishReadiness(item.scheduleId,value);
             }catch(error){
               const value=showError(error,'Readiness check failed');
               readinessResults.set(item.scheduleId,value);displayFeedback(outcome,value);outcome.scrollIntoView({block:'nearest'});
+              publishReadiness(item.scheduleId,value);
             }finally{check.disabled=false;}
           };
           row.append(check,outcome);
@@ -76,6 +84,11 @@ async function refresh(userInitiated=false){
         row.append(clear);
       }
       $('authorizationList').append(row);
+    }
+    if(selectionFeedback){
+      selectionFeedback=false;
+      if(binding)feedback('success',(s.title || s.id)+' — tab authorized',`This schedule is bound to tab ${binding.tabId}. Other prepared schedules keep their own tabs. Check Teams readiness below; recording has not been tested.`);
+      else feedback('info',s?(s.title || s.id)+' — choose its Teams tab':'Choose a schedule','Select the exact tab and confirm its channel, then prepare it and click the extension on that tab. Finish this step before preparing another schedule.');
     }
     if(userInitiated){
       const item=result.items.find(item=>item.scheduleId===$('authorizationSchedule').value);
@@ -88,14 +101,15 @@ async function refresh(userInitiated=false){
     if(userInitiated && statusReceived)send('TAB_CAPTURE_SETUP_ERROR',{action:'refresh',error:error.message}).catch(console.warn);
   }finally{
     refreshing=false;
-    if(queuedSchedule || queuedUserRefresh){const manual=queuedUserRefresh;queuedUserRefresh=false;refresh(manual);}
+    if(queuedSchedule || queuedUserRefresh || refreshAgain){const manual=queuedUserRefresh;queuedUserRefresh=false;refreshAgain=false;refresh(manual);}
   }
 }
-document.addEventListener('prepare-schedule',event=>{queuedSchedule=event.detail.scheduleId;refresh();});
+function resetTargetSelection(){$('authorizationTarget').value='';$('authorizationReady').checked=false;selectionFeedback=true;}
+document.addEventListener('prepare-schedule',event=>{queuedSchedule=event.detail.scheduleId;resetTargetSelection();refresh();});
 function showError(error,title='Setup action failed'){
   return feedback('error','Not ready — '+title,error.message+' No joining or recording was started by this action.');
 }
-$('authorizationSchedule').onchange=()=>refresh();
+$('authorizationSchedule').onchange=()=>{resetTargetSelection();refresh();};
 $('authorizationRefresh').onclick=()=>refresh(true);
 $('authorizeTarget').onclick=async()=>{
   let sent=false;
@@ -114,10 +128,10 @@ $('authorizeTarget').onclick=async()=>{
 };
 chrome.storage.onChanged.addListener((changes,area)=>{
   if(area==='local' && changes.tabCaptureLastAuthorization){
-    readinessResults.clear();
-    feedback('success','Tab authorized — check meeting readiness next','Chrome accepted authorization for this tab in this browser session. Use Check Teams readiness to verify the channel and meeting availability. Recording has not been tested.');
+    clearReadiness();
+    feedback('success','Schedule tab authorized — check meeting readiness next','Chrome accepted authorization for this schedule’s tab in this browser session. Other prepared schedules keep their own tabs. Use Check Teams readiness to verify the channel and meeting availability. Recording has not been tested.');
   }
-  if((area==='session'&&changes.tabCaptureGrants)||(area==='local'&&changes.automationSchedules))readinessResults.clear();
+  if((area==='session'&&changes.tabCaptureGrants)||(area==='local'&&changes.automationSchedules))clearReadiness();
   if((area==='session'&&changes.tabCaptureGrants)||(area==='local'&&(changes.automationSchedules||changes.tabCaptureLastAuthorization)))refresh();
 });
 setInterval(refresh,15000);

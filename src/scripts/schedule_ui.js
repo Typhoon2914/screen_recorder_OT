@@ -2,6 +2,20 @@ import {loadSchedules,updateSchedules} from '../automation/schedule_store.js';
 import {getNextRun} from '../automation/scheduler.js';
 const $=id=>document.getElementById(id);
 let schedules=[];
+let renderVersion=0;
+let authorizationItems=[];
+const readiness=new Map();
+function updatePreparationLabels(){
+  for(const label of document.querySelectorAll('[data-preparation-for]')){
+    const item=authorizationItems.find(item=>item.scheduleId===label.dataset.preparationFor);
+    const result=readiness.get(label.dataset.preparationFor);
+    label.textContent=!item?'Preparation status pending…':!item.available?'Needs preparation — '+item.message:
+      `Tab ${item.tabId} authorized for this schedule · ${result?result.title+' (checked '+new Date(result.at).toLocaleTimeString()+')':'Meeting readiness not checked'}`;
+  }
+}
+document.addEventListener('tab-preparation-status',event=>{authorizationItems=event.detail;updatePreparationLabels();});
+document.addEventListener('tab-readiness-result',event=>{readiness.set(event.detail.scheduleId,event.detail.result);updatePreparationLabels();});
+document.addEventListener('tab-readiness-cleared',()=>{readiness.clear();authorizationItems=[];updatePreparationLabels();});
 const report=error=>{$('scheduleStatus').textContent=error.message || String(error);};
 $('scheduleEditor').after($('tabAuthorizationSetup'));
 function repeatFields(){
@@ -65,14 +79,18 @@ nativeStatus().catch(report);
 function nowParts(){const d=new Date();return {date:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,weekday:['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()],time:d.toTimeString().slice(0,8)};}
 function button(text,action){const b=document.createElement('button');b.className='btn';b.type='button';b.textContent=text;b.onclick=()=>Promise.resolve().then(action).catch(report);return b;}
 async function render(){
-  schedules=await loadSchedules(chrome);
-  $('scheduleList').replaceChildren();
+  const version=++renderVersion;
+  const [snapshot,{automationRuns={},recordingHistory=[],automationDiagnostic}]=await Promise.all([
+    loadSchedules(chrome),chrome.storage.local.get(['automationRuns','recordingHistory','automationDiagnostic'])
+  ]);
+  if(version!==renderVersion)return;
+  schedules=snapshot;
+  const rows=document.createDocumentFragment(),options=document.createDocumentFragment();
   const selected=$('armSchedule').value;
-  $('armSchedule').replaceChildren(new Option('Select a schedule',''));
-  const {automationRuns={}}=await chrome.storage.local.get('automationRuns');
+  options.append(new Option('Select a schedule',''));
   for(const s of schedules){
-    if(s.enabled)$('armSchedule').add(new Option(s.title || s.id,s.id));
-    const row=document.createElement('div');row.className='scheduleRow';
+    if(s.enabled)options.append(new Option(s.title || s.id,s.id));
+    const row=document.createElement('div');row.className='scheduleRow';row.dataset.scheduleId=s.id;
     const label=document.createElement('div');label.className='scheduleSummary';
     const next=getNextRun([s],nowParts());
     const title=document.createElement('strong');title.textContent=s.title || s.id;
@@ -81,6 +99,9 @@ async function render(){
     const run=automationRuns[s.id];
     status.textContent=`${s.teamsTeam || 'Manual target'} → ${s.teamsChannel || ''} · ${s.enabled?(next?'Next '+next.date+' '+next.time:'No future run'):'Disabled'}${run?' · Last run: '+run.state.replaceAll('_',' '):''}`;
     label.append(title,timing,status);
+    if(s.captureMode==='tab'){
+      const prepared=document.createElement('small');prepared.dataset.preparationFor=s.id;label.append(prepared);
+    }
     row.append(label,button('Edit',()=>{
       $('scheduleId').value=s.id;$('lectureName').value=s.title || s.id;
       $('weekday').value=s.weekdays[0];$('scheduleTime').value=s.time;
@@ -110,12 +131,13 @@ async function render(){
       $('scheduleStatus').textContent='This occurrence is cancelled. Future weekly occurrences remain enabled.';
       await render();
     }));
-    $('scheduleList').append(row);
+    rows.append(row);
   }
+  $('scheduleList').replaceChildren(rows);
+  $('armSchedule').replaceChildren(options);
   $('armSchedule').value=selected;
-  const {recordingHistory=[]}=await chrome.storage.local.get('recordingHistory');
-  const {automationDiagnostic}=await chrome.storage.local.get('automationDiagnostic');
-  if(automationDiagnostic)$('automationDiagnostic').textContent=`${automationDiagnostic.at}: ${automationDiagnostic.message}`;
+  updatePreparationLabels();
+  $('automationDiagnostic').textContent=automationDiagnostic?`${automationDiagnostic.at}: ${automationDiagnostic.message}`:'';
   $('historyList').replaceChildren();
   for(const item of recordingHistory){const p=document.createElement('p');p.textContent=`${item.at} · ${item.state} · ${item.filename} · ${item.bytes} bytes`;$('historyList').append(p);}
 }

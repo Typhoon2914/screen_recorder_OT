@@ -25,7 +25,16 @@ change Chrome permissions, or replace MediaRecorder/FFmpeg/saving.
    the PC awake. Closing/restarting Chrome or reloading the extension requires
    authorization again. A prior manual recording is NOT this authorization.
 
-All schedules with the identical target URL can share its session grant.
+Each schedule must be prepared explicitly for its exact existing tab. Grants
+are bound to schedule ID and target configuration, not URL: two Teams tabs can
+have an identical URL while displaying different teams. Complete the toolbar
+click for one schedule before preparing another. Previously completed bindings
+are preserved. The same tab may be explicitly prepared for more than one
+schedule, but selecting a URL alone never associates an additional schedule.
+URL-only grants from older builds require fresh preparation after this update.
+Only one recording runs at a time; keep all prepared target tabs open for
+sequential meetings. Timing/title edits retain the binding, while changing the
+saved team, channel or capture target requires preparation again.
 Do not navigate that tab to unrelated meetings. A different channel is rejected.
 
 ## Runtime behavior

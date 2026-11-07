@@ -12,6 +12,11 @@ const {chromium}=await import('playwright');
 await fs.mkdir(out,{recursive:true});
 const extension=path.resolve('dist');
 const errors=[];const results=[];
+async function poll(check,timeout=10000){
+ const end=Date.now()+timeout;
+ while(Date.now()<end){const result=await check();if(result)return result;await new Promise(resolve=>setTimeout(resolve,100));}
+ throw Error('Timed out waiting for persisted recording result');
+}
 function probeMedia(file){
   const result=spawnSync(ffprobe.path,['-v','error','-count_frames','-show_format','-show_streams','-of','json',file],{encoding:'utf8'});
   assert.equal(result.status,0);assert.equal(result.stderr,'');
@@ -102,7 +107,7 @@ try {
   clearInterval(sampleTimer);await sample('saved');
   clearInterval(resourceTimer);windowsResources();
   await page.screenshot({path:path.join(out,'04-saved.png'),fullPage:true});
-  const manual=await page.evaluate(async()=>{const {recordingHistory}=await chrome.storage.local.get('recordingHistory');return recordingHistory[0];});
+  const manual=await poll(()=>page.evaluate(async()=>{const {recordingHistory=[]}=await chrome.storage.local.get('recordingHistory');return recordingHistory[0];}));
   const probe=probeMedia(manual.filename);
   assert.ok(probe.streams.some(s=>s.codec_type==='video'));assert.ok(probe.streams.some(s=>s.codec_type==='audio'));
   assert.ok(Number(probe.format.duration)>manualSeconds-1 && Number(probe.format.duration)<manualSeconds+6);
@@ -139,7 +144,11 @@ try {
   await page.waitForFunction(()=>document.getElementById('statusPill').textContent==='Recording',{},{timeout:15000});
   await page.screenshot({path:path.join(out,'06-scheduled-recording.png'),fullPage:true});
   await page.waitForFunction(()=>document.getElementById('statusPill').textContent==='saved',{},{timeout:90000});
-  const scheduled=await page.evaluate(async()=> (await chrome.storage.local.get('recordingHistory')).recordingHistory[0]);
+  // The saved pill precedes asynchronous history/cleanup. Wait for this run's
+  // persisted result, not the previous manual file, and for lifecycle completion.
+  const scheduled=await poll(()=>page.evaluate(async scheduleId=>
+    ((await chrome.storage.local.get('recordingHistory')).recordingHistory || []).find(item=>item.scheduleId===scheduleId),scheduleId));
+  await poll(()=>page.evaluate(async()=>!(await chrome.storage.local.get('automationActiveRecording')).automationActiveRecording));
   const scheduledProbe=probeMedia(scheduled.filename);
   assert.ok(scheduledProbe.streams.some(s=>s.codec_type==='video'));assert.ok(scheduledProbe.streams.some(s=>s.codec_type==='audio'));
   // WebM MediaRecorder may omit duration metadata; inspect last packet timestamps.

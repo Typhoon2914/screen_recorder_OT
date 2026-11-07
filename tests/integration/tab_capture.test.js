@@ -47,9 +47,12 @@ test('expired Chrome permission is detected rather than trusting stored authoriz
   const h=harness();await authorize(h);h.deny();await assert.rejects(()=>h.manager.prepare('a',5),/reauthor/i);
   assert.equal((await h.manager.status())[0].available,false);
 });
-test('multiple matching schedules reuse one explicit tab authorization; ambiguity is rejected',async()=>{
+test('another schedule must explicitly prepare its tab even when its URL matches',async()=>{
   const h=harness();await authorize(h);h.local.automationSchedules.push({...h.local.automationSchedules[0],id:'b'});
+  await assert.rejects(()=>h.manager.prepare('b',5),/Reauthorization/);
+  await h.manager.request('b',42);await h.manager.authorize({id:42,url:'https://example.test/meeting',title:'Lecture'});
   await h.manager.prepare('b',5);
+  await h.manager.prepare('a',5);
   await h.manager.revoke(42,'closed');await assert.rejects(()=>h.manager.check('b'),/reauthor/i);
 });
 test('signal validation rejects missing and invalid samples, retains quiet speech',()=>{
