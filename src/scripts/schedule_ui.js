@@ -50,11 +50,16 @@ $('useTeamsTab').onclick=async()=>{
     if(!$('setupTeamsTab').value)throw Error('Choose the intended Teams channel tab first');
     const tab=await chrome.tabs.get(Number($('setupTeamsTab').value));
     if(!/^https:\/\/teams\.(cloud\.microsoft|microsoft\.com)\//.test(tab.url || ''))throw Error('Selected tab is no longer Teams');
-    $('targetUrl').value=tab.url;$('captureMode').value='tab';
     const parts=(tab.title || '').split(' | ');
-    if(parts.length===4 && parts[0]==='Teams and Channels'){$('teamsTeam').value=parts[1];$('teamsChannel').value=parts[2];}
+    const channelTitle=parts.length===4 && parts[0]==='Teams and Channels' && parts[3]==='Microsoft Teams' &&
+      parts[1].trim() && parts[2].trim() && parts[1]!=='Meeting join';
+    // Teams uses the same title prefix on prejoin pages. Those fields describe
+    // the join screen, not a team/channel. Preserve existing edits on failure.
+    if(!channelTitle && $('teamsAutoJoin').checked)throw Error('Open the intended Teams channel (not the meeting or Join now screen), then click Use this tab again. Existing schedule fields were not changed.');
+    $('targetUrl').value=tab.url;$('captureMode').value='tab';
+    if(channelTitle){$('teamsTeam').value=parts[1];$('teamsChannel').value=parts[2];}
     channelSummary();
-    $('scheduleStatus').textContent='Target selected. Check the exact team/channel names and save the schedule.';
+    $('scheduleStatus').textContent=channelTitle?'Target selected. Check the exact team/channel names and save the schedule.':'Target selected without auto-join. This page does not identify a channel; team/channel fields were not changed.';
   }catch(error){report(error);}
 };
 refreshTeamsTabs().catch(report);

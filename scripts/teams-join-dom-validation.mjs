@@ -99,5 +99,36 @@ try{
  await page('<button aria-label="Leave">Leave</button>');
  assert.equal((await p.evaluate(teamsJoinPageStep,context)).state,'blocked');
  assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase:'joining'})).ready,true);
+ // October 31 regression: Teams keeps a disabled Join now button, then
+ // replaces the channel sidebar with a four-part Meeting join title.
+ const transitioning={...context,phase:'joining'};
+ // November 7 live evidence: sidebar disappears before the old channel title
+ // changes; the Meeting join title can retain the Teams and Channels prefix.
+ for(const phase of ['prejoin','joining']){
+  await page('<title>Teams and Channels | Test team | General | Microsoft Teams</title><p>Loading…</p>');
+  assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase})).state,phase,'old verified title with no sidebar is a transition');
+  await page('<title>Teams and Channels | Meeting join | Meeting in "General" | Microsoft Teams</title><p>Loading…</p>');
+  assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase})).state,phase,'Meeting join is not the team name');
+ }
+ for(const title of ['Teams and Channels | Test team | General | Microsoft Teams','Teams and Channels | Meeting join | Meeting in "General" | Microsoft Teams']){
+  await page(`<title>${title}</title><p>Loading…</p>`);
+  assert.equal((await p.evaluate(teamsJoinPageStep,context)).state,'blocked','loading title alone cannot establish verified provenance');
+ }
+ await page('<title>Teams and Channels | Meeting join | Meeting in "Other" | Microsoft Teams</title><button>Leave</button>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'blocked','Leave cannot override a different channel title');
+ for(const disabled of ['disabled','aria-disabled="true"','']){
+  await page(`<button id="now" ${disabled}>Join now</button>`);
+  assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'joining','a completed Join click must not regress or click again');
+  assert.deepEqual(await p.evaluate(()=>window.clicked),[]);
+ }
+ await page('<title>Microsoft Teams | Meeting join | Meeting in "General" | Microsoft Teams</title><p>Connecting…</p>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'joining','transition title is not a channel mismatch');
+ await page('<title>Microsoft Teams | Meeting join | Meeting in "Other" | Microsoft Teams</title><p>Connecting…</p>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'blocked','a different named meeting is still rejected');
+ await page(channel.replaceAll('Test team','Other team'));
+ assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'blocked');
+ await page(channel+'<button id="join" aria-label="Join meeting in progress">Join</button>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,transitioning)).state,'departed','returning to the channel after Join must not rejoin');
+ assert.deepEqual(await p.evaluate(()=>window.clicked),[]);
  console.log('PASS: real-browser DOM fixtures: absent meeting, correct channel, wrong channel, ambiguity, unverified prejoin, muted join, verified meeting. These are fixtures, not live acceptance.');
 }finally{await browser.close();}

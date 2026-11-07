@@ -12,6 +12,80 @@ function harness(results){
 test('Teams join waits for meeting without recording',async()=>{const h=harness([{state:'waiting'}]);assert.equal((await h.joiner.ensure(base,{tabId:7})).ready,false);assert.equal(h.calls.length,1);});
 test('Teams join advances through verified prejoin on exact tab',async()=>{const h=harness([{state:'prejoin'},{state:'joining'},{state:'joined',ready:true}]);assert.equal((await h.joiner.ensure(base,{tabId:7})).ready,true);assert.deepEqual(h.calls.map(c=>c.args[0].phase),['channel','prejoin','joining']);assert.ok(h.calls.every(c=>c.target.tabId===7));});
 test('Teams join resumes from session state after suspension',async()=>{const h=harness([{state:'joining'}]);await createTeamsJoiner(h.api,{sleep:async()=>{},maxSteps:1}).ensure(base,{tabId:7});h.api.scripting.executeScript=async r=>{assert.equal(r.args[0].phase,'joining');return [{result:{state:'joined',ready:true}}];};assert.equal((await createTeamsJoiner(h.api).ensure(base,{tabId:7})).ready,true);});
+
+test('verified transition persists across joiner recreation for only the same occurrence and document',async()=>{
+ const h=harness([]),occurrenceKey='lecture|2026-10-31|20:31';
+ h.api.scripting.executeScript=async r=>{
+  assert.equal(r.args[0].phase,'channel');
+  return [{documentId:'verified-document',result:{state:'prejoin'}}];
+ };
+ await createTeamsJoiner(h.api,{maxSteps:1}).ensure(base,{tabId:7},{occurrenceKey});
+ for(const [phase,state] of [['prejoin','joining'],['joining','joining'],['joining','joined']]){
+  h.api.scripting.executeScript=async r=>{
+   assert.deepEqual(r.target,{tabId:7,documentIds:['verified-document']});
+   assert.equal(r.args[0].phase,phase);
+   return [{documentId:'verified-document',result:{state,ready:state==='joined'}}];
+  };
+  const result=await createTeamsJoiner(h.api,{maxSteps:1}).ensure(base,{tabId:7},{occurrenceKey});
+  assert.equal(result.ready,state==='joined');
+ }
+ assert.equal(h.session.teamsJoinSessions[7].scheduleId,base.id);
+ assert.equal(h.session.teamsJoinSessions[7].occurrenceKey,occurrenceKey);
+});
+
+for(const mismatch of ['schedule','occurrence','tab','configuration','legacy']){
+ test(`saved joining trust is not inherited by another ${mismatch}`,async()=>{
+  const h=harness([{state:'joining'}]),occurrenceKey='lecture|2026-10-31|20:31';
+  await createTeamsJoiner(h.api,{maxSteps:1}).ensure(base,{tabId:7},{occurrenceKey});
+  const schedule={...base};let nextOccurrence=occurrenceKey,tabId=7;
+  if(mismatch==='schedule'){schedule.id='other';h.local.automationSchedules.push(schedule);}
+  if(mismatch==='occurrence')nextOccurrence='lecture|2026-11-07|20:31';
+  if(mismatch==='tab')tabId=8;
+  if(mismatch==='configuration'){schedule.time='20:32';h.local.automationSchedules=[schedule];}
+  if(mismatch==='legacy')delete h.session.teamsJoinSessions[7].scheduleId;
+  h.api.scripting.executeScript=async r=>{
+   assert.equal(r.args[0].phase,'channel');
+   assert.equal(r.target.documentIds,undefined);
+   return [{result:{state:'blocked',reason:'Already in an unverified meeting'}}];
+  };
+  await assert.rejects(()=>createTeamsJoiner(h.api).ensure(schedule,{tabId},{occurrenceKey:nextOccurrence}),/unverified/);
+ });
+}
+
+test('conflicting identity invalidates previous trust before a later Leave button',async()=>{
+ const h=harness([{state:'joining'}]);
+ await createTeamsJoiner(h.api,{maxSteps:1}).ensure(base,{tabId:7});
+ h.api.scripting.executeScript=async()=>[{result:{state:'blocked',reason:'Different meeting'}}];
+ await assert.rejects(()=>h.joiner.ensure(base,{tabId:7}),/Different meeting/);
+ assert.equal(h.session.teamsJoinSessions[7].phase,'channel');
+});
+
+test('monitoring requires matching occurrence and remains read-only',async()=>{
+ const h=harness([{state:'joined',ready:true}]),occurrenceKey='lecture|2026-10-31|20:31';
+ await h.joiner.ensure(base,{tabId:7},{occurrenceKey});
+ const before=structuredClone(h.session);
+ h.api.scripting.executeScript=async r=>{
+  assert.equal(r.args[0].phase,'joined');assert.equal(r.args[0].detectDeparture,true);
+  return [{result:{state:'departed'}}];
+ };
+ assert.equal((await h.joiner.inspect(base,{tabId:7},{occurrenceKey,detectDeparture:true})).state,'departed');
+ h.api.scripting.executeScript=async r=>{
+  assert.equal(r.args[0].phase,'channel');assert.equal(r.args[0].detectDeparture,false);
+  return [{result:{state:'blocked'}}];
+ };
+ await h.joiner.inspect(base,{tabId:7},{occurrenceKey:'different',detectDeparture:true});
+ assert.deepEqual(h.session,before);
+});
+
+test('cancellation arriving during page injection prevents storing readiness',async()=>{
+ const h=harness([]),occurrenceKey='lecture|2026-10-31|20:31';
+ h.api.scripting.executeScript=async()=>{
+  h.local.automationCancelledOccurrences=[occurrenceKey];
+  return [{result:{state:'joined',ready:true}}];
+ };
+ await assert.rejects(()=>h.joiner.ensure(base,{tabId:7},{occurrenceKey}),/cancelled/);
+ assert.equal(h.session.teamsJoinSessions,undefined);
+});
 test('Teams join rejects changed origin without injection',async()=>{const h=harness([]);h.api.tabs.get=async()=>({url:'https://example.com/',status:'complete'});await assert.rejects(()=>h.joiner.ensure(base,{tabId:7}),/origin/);assert.equal(h.calls.length,0);});
 test('Teams join stops when schedule disabled',async()=>{const h=harness([]);h.local.automationSchedules[0].enabled=false;await assert.rejects(()=>h.joiner.ensure(base,{tabId:7}),/cancelled/);assert.equal(h.calls.length,0);});
 test('Teams join stops when configuration changed',async()=>{const h=harness([]);h.local.automationSchedules[0].teamsTeam='Other';await assert.rejects(()=>h.joiner.ensure(base,{tabId:7}),/changed/);assert.equal(h.calls.length,0);});

@@ -27,6 +27,25 @@ test('rescheduling while target preparation is in flight prevents dispatch',asyn
  assert.equal(h.messages.length,0);
  assert.ok(h.logs.some(e=>e.event==='attempt_cancelled'));
 });
+
+test('start acknowledgement consumes the occurrence even if request delivery reply is lost',async()=>{
+ const h=fixture(),occurrenceKey='test|2026-10-20|19:00';
+ h.api.tabs.sendMessage=async(id,message)=>{
+  h.messages.push(message);
+  if(message.type==='REQUEST_RECORDING'){
+   await h.controller.handleRuntimeMessage({type:'RECORDING_STARTED',occurrenceKey,recordingId:'confirmed'}, {tab:{id:3}});
+   throw Error('Worker terminated before delivery reply');
+  }
+  return {ok:true};
+ };
+ await assert.rejects(()=>h.controller.handleAlarm(alarm),/terminated/);
+ assert.ok(h.state.automationHandledOccurrenceKeys?.includes(occurrenceKey),'durable acknowledgement must consume this occurrence');
+ const recreated=createChromeAutomationController({chromeApi:h.api,recorderUrl:'recorder',schedules:[base],
+  scheduledTargetProvider:async()=>({ready:true}),nowProvider:()=>({date:'2026-10-20',weekday:'Tuesday',time:'19:02:00'})});
+ await recreated.handleRuntimeMessage({type:'RECORDING_STOPPED',recordingId:'confirmed'}, {tab:{id:3}});
+ await recreated.handleAlarm(alarm);
+ assert.equal(h.messages.filter(m=>m.type==='REQUEST_RECORDING').length,1);
+});
 for(const action of ['disable','delete','time','duration']){
  test(`${action} invalidates a sleeping join before its next page click`,async()=>{
   const h=fixture();let calls=0;

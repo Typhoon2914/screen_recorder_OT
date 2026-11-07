@@ -112,6 +112,38 @@ permission mechanisms are not interchangeable.
 - Same-origin navigation may retain Chrome access, but is not permission to
   record an arbitrary other meeting. No automatic tab substitution is used.
 
+## Join transition recovery (2026-11-07)
+
+After the adapter clicks Join now, it waits in `joining` through a disabled or
+still-visible Join button and the observed `Meeting join` loading page. It does
+not click Join again. A visible Leave control completes that verified flow.
+An explicitly different team/channel or meeting still blocks the attempt.
+
+Join trust is scoped to schedule ID, full schedule fingerprint, exact tab,
+occurrence key and Chrome document ID. Session storage preserves it across
+service-worker suspension; a new occurrence, edited schedule, replacement
+document or legacy session record cannot inherit that trust. Browser restart
+still requires authorization. After a full Teams page reload during joining,
+cancel the old occurrence, return to the channel and prepare a new scheduled
+test. A genuine departure is persisted and must not cause another Join click.
+
+The recording-start acknowledgement persists both the active recording and
+handled occurrence in one storage update, so losing the delivery reply cannot
+allow another recording of the same occurrence after the first file is saved.
+
+`scripts/join-recovery-browser-validation.mjs` tests the built extension using
+real Chrome alarms, scripting, session/local storage, runtime messaging, forced
+worker stop/recreation, MediaRecorder, duration stopping and verified downloads.
+It also checks cancellation before/after capture and replacement-document
+rejection. Teams HTML, permission grants and source media are fixtures; this
+does not establish live Teams acceptance. `JOIN_RECOVERY_BASELINE=1` substitutes
+the adapter from `2b5c391` in the disposable extension copy to reproduce the
+original lost-joining failure.
+
+The browser harnesses accept `RECORDER_TEST_DIST` to select a separate build
+directory. This permits validation without overwriting an installed extension.
+See `JOIN_STATE_RECOVERY_ACCEPTANCE_2026-11-07.md` for evidence and live-test status.
+
 ## Silent-start policy verification (2026-10-20)
 
 - `npm test`: 218 passed, zero failures.

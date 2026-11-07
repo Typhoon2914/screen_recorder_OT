@@ -16,6 +16,7 @@ try{
   const callbacks=[];
   window.testState={automationSchedules:[],automationActivityLog:[],automationRuns:{}};
   window.testMessages=[];window.testDownloads=[];
+  window.testTabTitle='Teams and Channels | tEST | General | Microsoft Teams';
   window.renderReads=[];window.holdRenderReads=false;
   window.chrome={
    storage:{onChanged:{addListener:fn=>callbacks.push(fn)},local:{
@@ -30,7 +31,7 @@ try{
     }
    }},
    tabs:{query:async()=>[7,8].map(id=>({id,title:`Teams and Channels | ${id===7?'tEST':'Second team'} | General | Microsoft Teams`,url:'https://teams.cloud.microsoft/'})),
-    get:async()=>({id:7,title:'Teams and Channels | tEST | General | Microsoft Teams',url:'https://teams.cloud.microsoft/'})},
+    get:async()=>({id:7,title:testTabTitle,url:'https://teams.cloud.microsoft/'})},
    runtime:{sendMessage:async message=>{
     testMessages.push(message);
     if(message.type==='TAB_CAPTURE_STATUS')return {ok:true,items:testState.authorizationItems || []};
@@ -61,6 +62,17 @@ try{
  await page.goto('https://recorder.test/pages/recorder.html');
  await page.getByRole('button',{name:'New schedule',exact:true}).click();
  await page.locator('#setupTeamsTab').selectOption('7');
+ await page.getByRole('button',{name:'Use this tab',exact:true}).click();
+ // A page may transition between refreshing the picker and clicking Use this
+ // tab. Never replace an edited schedule's channel with prejoin title fields.
+ for(const title of ['Teams and Channels | Meeting join | Meeting in "General" | Microsoft Teams','Meeting in "General"']){
+  await page.evaluate(title=>{testTabTitle=title;},title);
+  await page.getByRole('button',{name:'Use this tab',exact:true}).click();
+  assert.equal(await page.locator('#teamsTeam').inputValue(),'tEST','prejoin must not overwrite the saved team');
+  assert.equal(await page.locator('#teamsChannel').inputValue(),'General');
+  assert.match(await page.locator('#scheduleStatus').textContent(),/Open.*channel.*Use this tab/i);
+ }
+ await page.evaluate(()=>{testTabTitle='Teams and Channels | tEST | General | Microsoft Teams';});
  await page.getByRole('button',{name:'Use this tab',exact:true}).click();
  await page.locator('#lectureName').fill('UI acceptance');
  await page.locator('#runDate').fill('2026-10-21');

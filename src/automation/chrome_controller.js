@@ -395,7 +395,14 @@ export function createChromeAutomationController({
           const deadlineMs = calculateStopDeadline(
             startedAtMs, pending.durationMinutes
           );
-          await storeRecord(ACTIVE_RECORDING_KEY, {
+          const handled=await loadHandledOccurrences();
+          handled.add(pending.occurrenceKey);
+          // Persist consumption with the acknowledged active recording. A worker
+          // can disappear before the original REQUEST_RECORDING reply resolves;
+          // that must not permit a second start once this recording is saved.
+          await chromeApi.storage.local.set({
+            [HANDLED_OCCURRENCES_KEY]:[...handled].slice(-1000),
+            [ACTIVE_RECORDING_KEY]: {
             scheduleId:pending.scheduleId,
             schedule:pending.schedule,
             recordingId: command.recordingId,
@@ -405,6 +412,7 @@ export function createChromeAutomationController({
             durationMinutes: pending.durationMinutes,
             deadlineMs,
             stopRequested: false
+            }
           });
           await storeRecord(PENDING_RECORDING_KEY, null);
           await runStatus(pending.scheduleId,{schedule:pending.schedule,occurrenceKey:pending.occurrenceKey,state:'recording'});

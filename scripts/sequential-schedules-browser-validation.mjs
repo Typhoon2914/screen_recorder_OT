@@ -14,7 +14,7 @@ const extension=path.join(out,'fixture-extension'),url='https://teams.cloud.micr
 // Grant script access only in this disposable test copy, so the real joiner
 // can operate routed local HTML without pretending activeTab was authorized.
 // Neither source/dist manifest nor the installed user extension is changed.
-await cp(path.resolve('dist'),extension,{recursive:true});
+await cp(path.resolve(process.env.RECORDER_TEST_DIST || 'dist'),extension,{recursive:true});
 const manifest=JSON.parse(await readFile(path.join(extension,'manifest.json'),'utf8'));
 manifest.host_permissions.push('https://teams.cloud.microsoft/*');
 await writeFile(path.join(extension,'manifest.json'),JSON.stringify(manifest,null,2));

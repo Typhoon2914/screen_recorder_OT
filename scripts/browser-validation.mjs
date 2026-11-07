@@ -10,7 +10,7 @@ const out=path.resolve('.test-artifacts',new Date().toISOString().replace(/[:.]/
 process.env.PLAYWRIGHT_BROWSERS_PATH ||= path.resolve('.test-artifacts/browser-cache');
 const {chromium}=await import('playwright');
 await fs.mkdir(out,{recursive:true});
-const extension=path.resolve('dist');
+const extension=path.resolve(process.env.RECORDER_TEST_DIST || 'dist');
 const errors=[];const results=[];
 async function poll(check,timeout=10000){
  const end=Date.now()+timeout;

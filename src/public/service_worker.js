@@ -32,7 +32,7 @@ const automationController = createChromeAutomationController({
   monitorActive:async active=>{
     if(!active.schedule?.teamsAutoJoin)return null;
     const target=await tabAuthorization.check(active.scheduleId);
-    const result=await teamsJoiner.inspect(active.schedule,target,{detectDeparture:true});
+    const result=await teamsJoiner.inspect(active.schedule,target,{detectDeparture:true,occurrenceKey:active.occurrenceKey});
     return {departed:result.state==='departed'};
   },
   scheduledTargetProvider: async (id,run)=>{

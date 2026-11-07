@@ -1,7 +1,7 @@
 // Narrow Teams adapter: no credentials, permission dialogs, meeting creation,
 // arbitrary tab selection, or authentication/lobby bypass. Uses activeTab access.
 export const TEAMS_ORIGINS=['https://teams.cloud.microsoft','https://teams.microsoft.com'];
-import {assertRunCurrent} from './run_state.js';
+import {assertRunCurrent,scheduleFingerprint} from './run_state.js';
 export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDeparture=false}){
   // Normalize rendering whitespace, not case or punctuation: different teams
   // must never be accepted just because their names are similar.
@@ -13,6 +13,16 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
   const checked=e=>e instanceof HTMLInputElement?e.checked:(e.getAttribute('aria-checked')==='true'?true:e.getAttribute('aria-checked')==='false'?false:null);
   const exact=name=>buttons.filter(e=>label(e)===name);
   const clickOne=(items)=>{if(items.length!==1 || items[0].disabled || items[0].getAttribute('aria-disabled')==='true')return false;items[0].click();return true;};
+  if(phase==='departed')return {state:'departed',ready:false,reason:'This occurrence already departed. No automatic rejoin is permitted.'};
+  const titleParts=normalize(document.title).split(' | ');
+  // Teams keeps the "Teams and Channels" prefix on its prejoin title too.
+  // Classify that form before interpreting the middle fields as team/channel.
+  const meetingTitle=titleParts.length===4 && titleParts[1]==='Meeting join' && titleParts[3]==='Microsoft Teams';
+  if(titleParts.length===4 && ((!meetingTitle && titleParts[0]==='Teams and Channels' && (titleParts[1]!==team || titleParts[2]!==channel)) ||
+     (meetingTitle && titleParts[2]!==`Meeting in "${channel}"`))){
+    const display=value=>JSON.stringify(String(value).slice(0,200));
+    return {state:'blocked',ready:false,reason:`Teams identity check failed. Expected ${display(team)} / ${display(channel)}; tab reports ${display(titleParts[1])} / ${display(titleParts[2])}. No Join click performed.`};
+  }
   if(exact('Leave').length===1){
     return ['joining','joined'].includes(phase)
       ?{state:'joined',ready:!inspectOnly,reason:'Joined through verified channel flow'}
@@ -25,6 +35,10 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
   const joinNow=exact('Join now');
   if(joinNow.length){
     if(departureCandidate)return departed();
+    // The verified Join click has already happened. Teams may leave this
+    // button disabled (or briefly enabled) while connecting. Never click twice
+    // or reinterpret the transition as a new prejoin session.
+    if(phase==='joining')return {state:'joining',ready:false,reason:'Join already requested; waiting for Teams to connect. No additional Join click performed.'};
     if(!['prejoin','joining'].includes(phase))return {state:'blocked',reason:'Unverified prejoin page; return to the configured channel'};
     if(inspectOnly)return {state:'prejoin',ready:false,reason:'Prejoin page detected. Read-only check did not click Join or change microphone/camera.'};
     const switches=[...document.querySelectorAll('[role="switch"]')].filter(visible);
@@ -101,17 +115,23 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
     }
   }
   const channelMatches=selected.length===1 && selected[0]===channel;
-  const titleParts=normalize(document.title).split(' | ');
   const titleMatches=titleParts.length===4 && titleParts[0]==='Teams and Channels' && titleParts[1]===team && titleParts[2]===channel && titleParts[3]==='Microsoft Teams';
   const headerMatches=header.includes(team);
   if(headerMatches && channelMatches && titleMatches){
-    if(departureCandidate)return departed();
+    if(departureCandidate || phase==='joining')return departed();
     const join=exact('Join meeting in progress');
     if(join.length>1)return {state:'blocked',reason:'Multiple meeting join buttons; cannot select safely'};
     if(!join.length)return {state:'waiting',reason:'Meeting has not started in the configured channel'};
     if(inspectOnly)return {state:'channel_ready',ready:false,reason:'Team/channel verified; meeting Join button found. No meeting joined or capture tested by this check.'};
     if(clickOne(join))return {state:'prejoin',reason:'Opening the configured channel meeting'};
     return {state:'waiting',reason:'Meeting join button is not available yet'};
+  }
+  const meetingTransition=meetingTitle && titleParts[2]===`Meeting in "${channel}"`;
+  // After our verified channel Join click, the sidebar can disappear before
+  // Teams updates the old title or mounts Join now. Preserve provenance while
+  // waiting; this is not readiness and does not authorize a fresh channel check.
+  if(['prejoin','joining'].includes(phase) && (meetingTransition || titleMatches) && !back.length && !channelLabels.length){
+    return {state:phase,ready:false,reason:'Verified meeting transition; waiting for Teams connection or lobby admission.'};
   }
   if(back.length || selected.length || titleParts.length===4){
     const display=value=>JSON.stringify(String(value || '').slice(0,200));
@@ -125,6 +145,12 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
 export function createTeamsJoiner(chromeApi,{sleep=ms=>new Promise(r=>setTimeout(r,ms)),maxSteps=12,log=async()=>{}}={}){
   const key='teamsJoinSessions';
   const identity=s=>JSON.stringify([s.targetUrl,s.teamsTeam,s.teamsChannel,s.teamsAutoJoin]);
+  // A grant can be reused, but trust in a Join click belongs only to this run.
+  // Legacy records lack this provenance and deliberately do not inherit trust.
+  const matchesRun=(record,schedule,occurrenceKey)=>record?.scheduleId===schedule.id &&
+    record.identity===identity(schedule) && record.fingerprint===scheduleFingerprint(schedule) &&
+    record.occurrenceKey===occurrenceKey;
+  const scriptTarget=(target,record)=>({tabId:target.tabId,...(record?.documentId?{documentIds:[record.documentId]}:{})});
   async function checkTarget(schedule,target,occurrenceKey){
     if(!TEAMS_ORIGINS.includes(new URL(schedule.targetUrl).origin))throw Error('Unsupported Teams origin');
     await assertRunCurrent(chromeApi,schedule,occurrenceKey);
@@ -132,13 +158,14 @@ export function createTeamsJoiner(chromeApi,{sleep=ms=>new Promise(r=>setTimeout
     if(new URL(tab.url).origin!==new URL(schedule.targetUrl).origin || (tab.pendingUrl && new URL(tab.pendingUrl).origin!==new URL(schedule.targetUrl).origin))throw Error('Teams target origin changed; reauthorization required');
     return tab;
   }
-  async function inspect(schedule,target,{detectDeparture=false}={}){
-    const tab=await checkTarget(schedule,target);
+  async function inspect(schedule,target,{detectDeparture=false,occurrenceKey}={}){
+    const tab=await checkTarget(schedule,target,occurrenceKey);
     if(tab.status!=='complete')return {state:'waiting',ready:false,reason:'Teams tab is loading'};
     const sessions=(await chromeApi.storage.session.get(key))[key] || {};
     const record=sessions[target.tabId];
-    const phase=record?.identity===identity(schedule)?record.phase:'channel';
-    const results=await chromeApi.scripting.executeScript({target:{tabId:target.tabId},func:teamsJoinPageStep,args:[{team:schedule.teamsTeam,channel:schedule.teamsChannel,phase,inspectOnly:true,detectDeparture}]});
+    const trusted=matchesRun(record,schedule,occurrenceKey);
+    const phase=trusted?record.phase:'channel';
+    const results=await chromeApi.scripting.executeScript({target:scriptTarget(target,trusted?record:null),func:teamsJoinPageStep,args:[{team:schedule.teamsTeam,channel:schedule.teamsChannel,phase,inspectOnly:true,detectDeparture:trusted&&detectDeparture}]});
     const result=results?.[0]?.result;
     if(!result || !['waiting','prejoin','joining','joined','blocked','channel_ready','departed'].includes(result.state))throw Error('Invalid Teams readiness result');
     return {...result,ready:false};
@@ -147,7 +174,7 @@ export function createTeamsJoiner(chromeApi,{sleep=ms=>new Promise(r=>setTimeout
     if(!TEAMS_ORIGINS.includes(new URL(schedule.targetUrl).origin))throw Error('Unsupported Teams origin');
     const sessions=(await chromeApi.storage.session.get(key))[key] || {};
     let record=sessions[target.tabId];
-    if(record?.identity!==identity(schedule))record={identity:identity(schedule),phase:'channel'};
+    if(!matchesRun(record,schedule,occurrenceKey))record={identity:identity(schedule),scheduleId:schedule.id,fingerprint:scheduleFingerprint(schedule),occurrenceKey,phase:'channel'};
     for(let i=0;i<maxSteps;i++){
       await assertCurrent();
       const tab=await checkTarget(schedule,target,occurrenceKey);
@@ -155,19 +182,30 @@ export function createTeamsJoiner(chromeApi,{sleep=ms=>new Promise(r=>setTimeout
       if(tab.status!=='complete')return {ready:false,reason:'Teams tab is loading'};
       await checkTarget(schedule,target,occurrenceKey);
       await assertCurrent();
-      const results=await chromeApi.scripting.executeScript({target:{tabId:target.tabId},func:teamsJoinPageStep,args:[{team:schedule.teamsTeam,channel:schedule.teamsChannel,phase:record.phase,detectDeparture:!!occurrenceKey && record.occurrenceKey===occurrenceKey}]});
+      const results=await chromeApi.scripting.executeScript({target:scriptTarget(target,record),func:teamsJoinPageStep,args:[{team:schedule.teamsTeam,channel:schedule.teamsChannel,phase:record.phase,detectDeparture:!!occurrenceKey && record.occurrenceKey===occurrenceKey}]});
       await checkTarget(schedule,target,occurrenceKey);
+      await assertCurrent();
       const result=results?.[0]?.result;
       if(!result || !['waiting','prejoin','joining','joined','blocked','departed'].includes(result.state) || (result.ready===true && result.state!=='joined'))throw Error('Invalid Teams join page result');
       await log({event:'teams_'+result.state,scheduleId:schedule.id,level:result.state==='blocked'?'error':'info',message:result.reason || result.state});
-      if(result.state==='departed')return {ready:false,departed:true,reason:result.reason};
+      if(result.state==='departed'){
+        sessions[target.tabId]={...record,phase:'departed'};
+        await chromeApi.storage.session.set({[key]:sessions});
+        return {ready:false,departed:true,reason:result.reason};
+      }
       if(result.state==='blocked'){
+        if(sessions[target.tabId]){
+          // Conflicting evidence revokes the previous transition; a subsequent
+          // Leave button must not resurrect trust in an unrelated meeting.
+          sessions[target.tabId]={...record,phase:'channel'};
+          await chromeApi.storage.session.set({[key]:sessions});
+        }
         const diagnostic={at:new Date().toISOString(),state:'teams_blocked',scheduleId:schedule.id,message:result.reason || 'Teams joining blocked'};
         const {automationJoinEvents=[]}=await chromeApi.storage.local.get('automationJoinEvents');
         await chromeApi.storage.local.set({automationDiagnostic:diagnostic,automationJoinEvents:[...automationJoinEvents,diagnostic].slice(-100)});
         throw Error(diagnostic.message);
       }
-      record={...record,occurrenceKey,phase:result.state==='waiting'?'channel':result.state,at:new Date().toISOString()};
+      record={...record,documentId:results[0].documentId || record.documentId,occurrenceKey,phase:result.state==='waiting'?'channel':result.state,at:new Date().toISOString()};
       sessions[target.tabId]=record;await chromeApi.storage.session.set({[key]:sessions});
       const diagnostic={at:record.at,state:'teams_'+result.state,scheduleId:schedule.id,message:result.reason || result.state};
       const {automationJoinEvents=[]}=await chromeApi.storage.local.get('automationJoinEvents');
