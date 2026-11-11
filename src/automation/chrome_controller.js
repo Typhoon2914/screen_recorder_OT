@@ -96,7 +96,7 @@ export function createChromeAutomationController({
     const record={schedule,occurrenceKey,state,expiresAt,
       nextRetryAt:state==='retry_pending'?next:null,message};
     await runStatus(schedule.id,record);
-    await log({event:state,scheduleId:schedule.id,level:'warning',
+    await log({event:state,scheduleId:schedule.id,occurrenceKey,level:'warning',
       message:state==='retry_pending'?`${message} Another attempt is planned at the next scheduler check.`:`${message} No retry remains within the start window.`,
       nextRetryAt:record.nextRetryAt?new Date(record.nextRetryAt).toISOString():undefined,expiresAt:new Date(expiresAt).toISOString()});
   }
@@ -314,7 +314,7 @@ export function createChromeAutomationController({
     for(const [id,run] of Object.entries(runs)){
       if(run.state==='retry_pending' && nowMsProvider()>run.expiresAt){
         await runStatus(id,{...run,state:'expired',nextRetryAt:null});
-        await log({event:'retry_expired',scheduleId:id,level:'warning',message:'Start window expired. No further attempts for this occurrence.'});
+        await log({event:'retry_expired',scheduleId:id,occurrenceKey:run.occurrenceKey,level:'warning',message:'Start window expired. No further attempts for this occurrence.'});
       }
     }
     const handled = await loadHandledOccurrences();
@@ -343,7 +343,7 @@ export function createChromeAutomationController({
           await log({event:'attempt_cancelled',scheduleId:schedule.id,message:error.message});
           continue;
         }
-        await log({event:'attempt_failed',level:'error',scheduleId:schedule.id,message:error.message});
+        await log({event:'attempt_failed',level:'error',scheduleId:schedule.id,occurrenceKey:getOccurrenceKey(schedule,now),message:error.message});
         if(run?.expiresAt)await retryStatus(schedule,run.occurrenceKey,run.expiresAt,error.message).catch(()=>{});
         throw error;
       }
@@ -416,7 +416,7 @@ export function createChromeAutomationController({
           });
           await storeRecord(PENDING_RECORDING_KEY, null);
           await runStatus(pending.scheduleId,{schedule:pending.schedule,occurrenceKey:pending.occurrenceKey,state:'recording'});
-          await log({event:'recording_started',scheduleId:pending.scheduleId,message:'Recording started. Duration is measured from this actual start.'});
+          await log({event:'recording_started',scheduleId:pending.scheduleId,occurrenceKey:pending.occurrenceKey,message:'Recording started. Duration is measured from this actual start.'});
         }
         return { ok: true, type: command.type };
       }
@@ -439,6 +439,11 @@ export function createChromeAutomationController({
           if(pending?.tabId===sender.tab?.id)await storeRecord(PENDING_RECORDING_KEY,null);
           const active=await loadRecord(ACTIVE_RECORDING_KEY);
           if(active?.tabId===sender.tab?.id)await storeRecord(ACTIVE_RECORDING_KEY,null);
+          const impacted=(active?.tabId===sender.tab?.id ? active : null) || (pending?.tabId===sender.tab?.id ? pending : null);
+          if(impacted){
+            await log({event:'capture_failed',level:'error',scheduleId:impacted.scheduleId,
+              occurrenceKey:impacted.occurrenceKey,message:String(command.message || command.reason || 'Recorder error')});
+          }
         }
         return { ok: true, type: command.type };
 
