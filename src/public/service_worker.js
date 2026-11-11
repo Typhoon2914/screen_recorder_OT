@@ -4,7 +4,15 @@ import {createTabAuthorization} from "./automation/tab_authorization.js";
 const tabAuthorization=createTabAuthorization(chrome);
 import {createTeamsJoiner} from './automation/teams_join.js';
 import {createActivityLog} from './automation/activity_log.js';
-const log=createActivityLog(chrome);
+import {createTelegramAlerts,validateTelegramConfig} from './automation/telegram_alerts.js';
+const telegram=createTelegramAlerts({storage:chrome.storage.local});
+const activityLog=createActivityLog(chrome);
+async function log(entry){
+  await activityLog(entry);
+  try {
+    if(await telegram.enqueue(entry))void telegram.flush().catch(console.error);
+  }catch(error){console.error('Could not queue Telegram notification:',error.message);}
+}
 const teamsJoiner=createTeamsJoiner(chrome,{log});
 import {createSetupActions} from './automation/setup_feedback.js';
 const setupAction=createSetupActions({authorization:tabAuthorization,joiner:teamsJoiner,api:chrome,log});
@@ -75,17 +83,32 @@ chrome.action.onClicked.addListener(tab => {
 
 chrome.runtime.onInstalled.addListener(() => {
   ensureAutomationPolling().catch(console.error);
+  telegram.flush().catch(console.error);
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.storage.session.remove(['tabCaptureGrants','tabCaptureAuthorizationIntent','teamsJoinSessions']).catch(console.error);
   chrome.storage.local.set({automationActiveRecording:null,automationPendingRecording:null,automationDiagnostic:{at:new Date().toISOString(),state:'needs_authorization',message:'Browser restarted. Reauthorize the target tab before unattended recording. Missed occurrences are not replayed.'}}).catch(console.error);
   ensureAutomationPolling().catch(console.error);
+  telegram.flush().catch(console.error);
 });
 
-chrome.tabs.onRemoved.addListener(tabId=>automationController.handleRecorderClosed(tabId).catch(console.error));
+chrome.tabs.onRemoved.addListener(tabId=>{
+  (async()=>{
+    const {automationActiveRecording:active,automationPendingRecording:pending}=await chrome.storage.local.get(['automationActiveRecording','automationPendingRecording']);
+    if(active?.tabId===tabId || pending?.tabId===tabId){
+      await log({event:'recorder_tab_closed',level:'error',scheduleId:active?.scheduleId || pending?.scheduleId,occurrenceKey:active?.occurrenceKey || pending?.occurrenceKey,message:'Recorder tab closed or reloaded; unsaved active recording may be lost.'});
+    }
+    await automationController.handleRecorderClosed(tabId);
+  })().catch(console.error);
+});
 async function revokeCapture(tabId,reason){
+  const {tabCaptureGrants={}}=await chrome.storage.session.get('tabCaptureGrants');
+  const impacted=Object.entries(tabCaptureGrants).filter(([,grant])=>grant?.tabId===tabId).map(([id])=>id);
   await tabAuthorization.revoke(tabId,reason);
+  if(reason!=='Authorization cleared by user'){
+    for(const scheduleId of impacted)await log({event:'target_grant_lost',scheduleId,level:'warning',message:reason});
+  }
   await chrome.runtime.sendMessage({type:'TAB_CAPTURE_REVOKED',targetTabId:tabId,reason}).catch(()=>{});
 }
 chrome.tabs.onRemoved.addListener(tabId=>revokeCapture(tabId,'Target tab closed').catch(console.error));
@@ -106,12 +129,15 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     const {nativeCompanion}=await chrome.storage.local.get('nativeCompanion');
     if(nativeCompanion?.enabled){
       if(alarm.name==='screen-recorder-automation-poll')await queueNative(()=>refreshNativeCompanion(chrome));
+      if(alarm.name==='screen-recorder-automation-poll')await telegram.flush();
       return;
     }
     await automationController.handleAlarm(alarm);
+    if(alarm.name==='screen-recorder-automation-poll')await telegram.flush();
   })().catch(async error=>{
     console.error(error);
     await chrome.storage.local.set({automationDiagnostic:{at:new Date().toISOString(),state:'failed',message:error.message}});
+    await log({event:'attempt_failed',scheduleId:'',level:'error',message:'Scheduler error: '+error.message});
   });
 });
 
@@ -134,6 +160,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
       const labels={recording_started:'MediaRecorder started.',capture_stopped:'Capture stopped. The file has not yet been saved.',saving:'Saving the finalized file; waiting for download verification.',saved:'Download completed and file verified.',save_failed:'Save failed; recording retained for retry.',audio_warning:'Audio warning.',capture_failed:'Capture startup failed.'};
       if(labels[event.state])log({event:event.state,scheduleId:event.scheduleId,
         level:/failed/.test(event.state)?'error':/warning/.test(event.state)?'warning':'info',
+        occurrenceKey:event.occurrenceKey,
         message:labels[event.state]+(event.message?' '+event.message:'')}).catch(console.error);
     }
   }
@@ -142,6 +169,24 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if(message.recorderTabId!=null)return false;
   if(sender.id!==chrome.runtime.id)return false;
+  if(['TELEGRAM_SAVE_CONFIG','TELEGRAM_TEST','TELEGRAM_STATUS'].includes(message.type)){
+    if(sender.tab?.url!==RECORDER_URL)return false;
+    (async()=>{
+      if(message.type==='TELEGRAM_STATUS'){
+        const {telegramAlerts={},telegramDeliveryStatus=null,telegramAlertOutbox=[]}=await chrome.storage.local.get(['telegramAlerts','telegramDeliveryStatus','telegramAlertOutbox']);
+        return {ok:true,enabled:telegramAlerts.enabled===true,configured:!!telegramAlerts.token&&!!telegramAlerts.chatId,chatId:telegramAlerts.chatId||'',status:telegramDeliveryStatus,queued:telegramAlertOutbox.length};
+      }
+      if(message.type==='TELEGRAM_SAVE_CONFIG'){
+        const previous=await telegram.configuration();
+        const config=validateTelegramConfig({enabled:message.enabled,token:message.token || previous.token || '',chatId:message.chatId || previous.chatId || ''});
+        await chrome.storage.local.set({telegramAlerts:config});
+        if(config.enabled)void telegram.flush().catch(console.error);
+        return {ok:true};
+      }
+      return await telegram.testConnection();
+    })().then(sendResponse).catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
+  }
   if(['AUTOMATION_CANCEL_RUN','AUTOMATION_VALIDATE_START'].includes(message.type)){
     if(sender.tab?.url!==RECORDER_URL)return false;
     (async()=>{
