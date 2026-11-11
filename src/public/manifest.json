@@ -21,7 +21,10 @@
     "alarms",
     "storage"
   ],
-  "host_permissions": ["http://127.0.0.1/*"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://api.telegram.org/*"
+  ],
   "background": {
     "service_worker": "service_worker.js",
     "type": "module"
