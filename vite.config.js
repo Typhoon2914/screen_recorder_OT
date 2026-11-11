@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import fs from "node:fs";
 import path from "node:path";
+import { assertSafeBuildOutput } from "./scripts/build-output-guard.mjs";
 
 function copyFFmpegCore() {
   let outputDir;
@@ -8,6 +9,7 @@ function copyFFmpegCore() {
     name: "copy-ffmpeg-core",
     configResolved(config) {
       outputDir = path.resolve(config.root, config.build.outDir);
+      assertSafeBuildOutput(outputDir);
     },
     closeBundle() {
       const esmDir = path.resolve("node_modules/@ffmpeg/core/dist/esm");
