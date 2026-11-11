@@ -28,11 +28,12 @@ export function alertForEvent(entry) {
     recorder_tab_closed: ['critical','Recorder tab closed during a scheduled run'],
     overlap_deferred: ['warning','Lecture delayed by another recording'],
     audio_warning: ['warning','Recording audio warning'],
-    target_grant_lost: ['warning','Teams capture authorization lost']
+    target_grant_lost: ['warning','Teams capture authorization lost'],
+    scheduler_failed: ['critical','Recorder scheduler encountered an error']
   };
   const spec=descriptions[entry.event];
   if(!spec)return null;
-  if(!entry.scheduleId && !['setup_authorization_failed','target_grant_lost'].includes(entry.event))return null;
+  if(!entry.scheduleId && !['setup_authorization_failed','target_grant_lost','scheduler_failed'].includes(entry.event))return null;
   const [severity,title]=spec;
   return {severity,event:entry.event,scheduleId:String(entry.scheduleId||''),occurrenceKey:String(entry.occurrenceKey||''),
     message:(`Screen Recorder · ${severity.toUpperCase()}\n${title}\n${entry.scheduleId?'Schedule: '+safeLogText(entry.scheduleId)+'\n':''}${entry.message?safeLogText(entry.message):''}`).slice(0,1500)};
@@ -59,7 +60,7 @@ export function createTelegramAlerts({storage,fetchImpl=fetch,now=()=>Date.now()
       if((await configuration()).enabled!==true)return false;
       const data=await storage.get(['telegramAlertOutbox','telegramAlertDeliveredKeys']);
       const queue=data.telegramAlertOutbox || [],delivered=data.telegramAlertDeliveredKeys || [];
-      const windowId=['attempt_failed','audio_warning','overlap_deferred'].includes(alert.event)?Math.floor(now()/600000):'once';
+      const windowId=['attempt_failed','audio_warning','overlap_deferred','scheduler_failed'].includes(alert.event)?Math.floor(now()/600000):'once';
       const key=[alert.event,alert.scheduleId,alert.occurrenceKey||Math.floor(now()/3600000),windowId].join('|');
       if(delivered.includes(key)||queue.some(x=>x.key===key))return false;
       await storage.set({telegramAlertOutbox:[...queue,{key,alert,tries:0,nextAt:now()}].slice(-80)});
