@@ -7,6 +7,7 @@ import {acquireAuthorizedTab} from '../automation/tab_capture.js';
 import './tab_capture_ui.js';
 import "./schedule_ui.js";
 import "./workspace_ui.js";
+import "./telegram_ui.js";
 
 const $ = (id) => document.getElementById(id);
 
