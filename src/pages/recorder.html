@@ -162,6 +162,18 @@
         <label><input type="checkbox" id="followLogs" checked /> Follow latest</label>
       </div>
       <p id="logStatus" role="status"></p>
+      <details id="telegramSettings">
+        <summary>Telegram alerts (optional)</summary>
+        <p class="notice">Personal bot notifications for scheduled recording failures and saves. Set up a bot with Telegram @BotFather and start a chat with it before testing. Credentials are saved only in this Chrome profile; never export them or commit them to source control. Alerts cannot run while Chrome is closed or Windows is sleeping.</p>
+        <label><input type="checkbox" id="telegramEnabled" /> Enable Telegram alerts</label>
+        <label>Bot token <input type="password" id="telegramToken" autocomplete="off" placeholder="Leave blank to keep the saved token" /></label>
+        <label>Destination chat ID <input type="text" id="telegramChatId" autocomplete="off" placeholder="Your numeric Telegram chat ID" /></label>
+        <div class="actions">
+          <button type="button" class="btn" id="telegramSave">Save Telegram settings</button>
+          <button type="button" class="btn" id="telegramTest">Send test message</button>
+        </div>
+        <p id="telegramStatus" role="status" aria-live="polite">Telegram alerts are not configured.</p>
+      </details>
       <h3>Last scheduler message</h3><p id="automationDiagnostic">No scheduler message yet</p>
       <ol id="activityLog" aria-label="Timestamped activity"></ol>
     </section>
