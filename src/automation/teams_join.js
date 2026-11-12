@@ -18,8 +18,15 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
   // Teams keeps the "Teams and Channels" prefix on its prejoin title too.
   // Classify that form before interpreting the middle fields as team/channel.
   const meetingTitle=titleParts.length===4 && titleParts[1]==='Meeting join' && titleParts[3]==='Microsoft Teams';
+  // Teams sometimes displays the meeting's *title* (e.g. "Test Meeting")
+  // instead of 'Meeting in "General"'. Never use that title to establish
+  // provenance. Accept it only after the exact team/channel Join action was
+  // observed for this occurrence (the caller supplies the trusted phase).
+  // An explicit 'Meeting in "Other"' still contradicts the chosen channel.
+  const namedChannel=meetingTitle?/^Meeting in "(.+)"$/.exec(titleParts[2]):null;
+  const trustedTransition=['prejoin','joining','joined'].includes(phase);
   if(titleParts.length===4 && ((!meetingTitle && titleParts[0]==='Teams and Channels' && (titleParts[1]!==team || titleParts[2]!==channel)) ||
-     (meetingTitle && titleParts[2]!==`Meeting in "${channel}"`))){
+     (meetingTitle && ((namedChannel && namedChannel[1]!==channel) || (!namedChannel && !trustedTransition))))){
     const display=value=>JSON.stringify(String(value).slice(0,200));
     return {state:'blocked',ready:false,reason:`Teams identity check failed. Expected ${display(team)} / ${display(channel)}; tab reports ${display(titleParts[1])} / ${display(titleParts[2])}. No Join click performed.`};
   }
@@ -126,7 +133,7 @@ export function teamsJoinPageStep({team,channel,phase,inspectOnly=false,detectDe
     if(clickOne(join))return {state:'prejoin',reason:'Opening the configured channel meeting'};
     return {state:'waiting',reason:'Meeting join button is not available yet'};
   }
-  const meetingTransition=meetingTitle && titleParts[2]===`Meeting in "${channel}"`;
+  const meetingTransition=meetingTitle && (!namedChannel || namedChannel[1]===channel);
   // After our verified channel Join click, the sidebar can disappear before
   // Teams updates the old title or mounts Join now. Preserve provenance while
   // waiting; this is not readiness and does not authorize a fresh channel check.
