@@ -16,6 +16,7 @@ import {
 export const AUTOMATION_POLL_ALARM = "screen-recorder-automation-poll";
 import {prepareTarget} from './target_readiness.js';
 import {scheduleFingerprint} from './run_state.js';
+import {preflightCandidate} from './teams_preflight.js';
 
 const HANDLED_OCCURRENCES_KEY = "automationHandledOccurrenceKeys";
 const PENDING_RECORDING_KEY = "automationPendingRecording";
@@ -60,6 +61,7 @@ export function createChromeAutomationController({
   schedulesProvider = null,
   scheduledTargetProvider = null,
   monitorActive = null,
+  preflight = null,
   log = async()=>{},
   nowProvider = defaultNowProvider,
   nowMsProvider = () => Date.now()
@@ -130,6 +132,14 @@ export function createChromeAutomationController({
     cancelQueue=task.catch(()=>{});return task;
   }
   async function schedulesChanged(nextSchedules=null){
+    if(preflight && !await loadRecord(ACTIVE_RECORDING_KEY) && !await loadRecord(PENDING_RECORDING_KEY)){
+      for(const schedule of currentSchedules){
+        const candidate=preflightCandidate(schedule,now);
+        if(!candidate)continue;
+        try{await preflight(schedule,candidate);}
+        catch(error){await log({event:'preflight_attention',scheduleId:schedule.id,occurrenceKey:candidate.occurrenceKey,level:'warning',message:'Preflight could not complete: '+error.message});}
+      }
+    }
     const runs=await loadRecord('automationRuns') || {};
     for(const [id,run] of Object.entries(runs)){
       if(!['joining','retry_pending','starting'].includes(run.state))continue;
