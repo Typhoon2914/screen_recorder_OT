@@ -31,7 +31,9 @@ export function alertForEvent(entry) {
     target_grant_lost: ['warning','Teams capture authorization lost'],
     scheduler_failed: ['critical','Recorder scheduler encountered an error'],
     preflight_attention: ['warning','Teams needs attention before lecture'],
-    preflight_refreshed: ['info','Teams tab refreshed before lecture']
+    preflight_refreshed: ['info','Teams tab refreshed before lecture'],
+    save_timeout: ['critical','Recording save is overdue'],
+    recording_stalled: ['critical','Recording stop/save appears stalled']
   };
   const spec=descriptions[entry.event];
   if(!spec)return null;
