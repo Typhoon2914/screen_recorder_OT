@@ -110,6 +110,17 @@ try{
   await page('<title>Teams and Channels | Meeting join | Meeting in "General" | Microsoft Teams</title><p>Loading…</p>');
   assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase})).state,phase,'Meeting join is not the team name');
  }
+ // November 12 live regression: Teams now uses the meeting TITLE instead of
+ // 'Meeting in "General"'. The same trusted prejoin must advance to Join now.
+ await page('<title>Teams and Channels | Meeting join | Test Meeting | Microsoft Teams</title><input role="switch" type="checkbox" title="Turn camera on (Ctrl+Shift+O)"><input role="switch" type="checkbox" title="Unmute mic (Ctrl+Shift+M)"><input type="radio" aria-label="Computer audio" checked><button id="now">Join now</button>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,context)).state,'blocked','meeting title alone never grants join trust');
+ assert.deepEqual(await p.evaluate(()=>window.clicked),[]);
+ assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase:'prejoin'})).state,'joining','trusted channel click permits actual meeting-title prejoin');
+ assert.deepEqual(await p.evaluate(()=>window.clicked),['now']);
+ await page('<title>Teams and Channels | Meeting join | Test Meeting | Microsoft Teams</title><p>Loading…</p>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase:'prejoin'})).state,'prejoin','temporary titled loading is a trusted transition');
+ await page('<title>Teams and Channels | Meeting join | Test Meeting | Microsoft Teams</title><button aria-label="Leave">Leave</button>');
+ assert.equal((await p.evaluate(teamsJoinPageStep,{...context,phase:'joined'})).ready,true,'verified joined meeting may retain its title');
  for(const title of ['Teams and Channels | Test team | General | Microsoft Teams','Teams and Channels | Meeting join | Meeting in "General" | Microsoft Teams']){
   await page(`<title>${title}</title><p>Loading…</p>`);
   assert.equal((await p.evaluate(teamsJoinPageStep,context)).state,'blocked','loading title alone cannot establish verified provenance');
