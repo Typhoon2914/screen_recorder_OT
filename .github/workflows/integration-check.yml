@@ -34,6 +34,18 @@ jobs:
           node --check .test-artifacts/ci-build/automation/telegram_alerts.js
           node --check .test-artifacts/ci-build/automation/recording_watchdog.js
           node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('.test-artifacts/ci-build/manifest.json'));if(!m.permissions.includes('tabCapture')||!m.host_permissions.includes('https://api.telegram.org/*'))process.exit(1)"
+      - name: Install isolated Chromium for browser fixtures
+        run: npx playwright install --with-deps chromium
+      - name: Preflight browser UI fixture
+        run: node scripts/teams-preflight-ui-validation.mjs
+      - name: Recorder browser fixture
+        env:
+          RECORDER_TEST_DIST: .test-artifacts/ci-build
+        run: node scripts/browser-validation.mjs
+      - name: Sequential Teams browser fixtures
+        env:
+          RECORDER_TEST_DIST: .test-artifacts/ci-build
+        run: node scripts/sequential-schedules-browser-validation.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: screen-recorder-experimental-dist
