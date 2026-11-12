@@ -1,0 +1,41 @@
+name: Experimental integration checks
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'vite.config.js'
+      - 'package*.json'
+      - '.github/workflows/integration-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build to isolated artifact directory
+        run: npm run build -- --outDir ../.test-artifacts/ci-build
+      - name: Check packaged extension contents
+        run: |
+          node --check .test-artifacts/ci-build/service_worker.js
+          node --check .test-artifacts/ci-build/automation/teams_preflight.js
+          node --check .test-artifacts/ci-build/automation/telegram_alerts.js
+          node --check .test-artifacts/ci-build/automation/recording_watchdog.js
+          node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('.test-artifacts/ci-build/manifest.json'));if(!m.permissions.includes('tabCapture')||!m.host_permissions.includes('https://api.telegram.org/*'))process.exit(1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: screen-recorder-experimental-dist
+          path: .test-artifacts/ci-build
+          retention-days: 7
