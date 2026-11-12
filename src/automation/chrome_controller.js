@@ -238,7 +238,7 @@ export function createChromeAutomationController({
     const elapsed=seconds(now.time.length===5?now.time+':00':now.time)-seconds(schedule.time.length===5?schedule.time+':00':schedule.time);
     const expiresAt=nowMsProvider()+((schedule.launchWindowSeconds ?? 60)-elapsed)*1000;
     await runStatus(schedule.id,{schedule,occurrenceKey,state:'joining',expiresAt});
-    await log({event:'run_attempt',scheduleId:schedule.id,message:'Scheduled attempt started. Checking authorization and meeting readiness.',expiresAt:new Date(expiresAt).toISOString()});
+    await log({event:'run_attempt',scheduleId:schedule.id,occurrenceKey,message:'Scheduled attempt started. Checking authorization and meeting readiness.',expiresAt:new Date(expiresAt).toISOString()});
     await assertCurrent(schedule,occurrenceKey);
     if(schedule.durationMinutes!=null)validateRecordingDuration(schedule.durationMinutes);
     if(schedule.captureMode==='tab'){
