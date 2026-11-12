@@ -174,6 +174,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
       if(labels[event.state])log({event:event.state,scheduleId:event.scheduleId,
         level:/failed/.test(event.state)?'error':/warning/.test(event.state)?'warning':'info',
         occurrenceKey:event.occurrenceKey,
+        heartbeatNumber:event.heartbeatNumber,
         message:labels[event.state]+(event.message?' '+event.message:'')}).catch(console.error);
     }
   }
