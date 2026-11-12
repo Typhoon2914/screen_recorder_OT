@@ -8,6 +8,7 @@ test('build copy plugins honor the resolved output directory without writing liv
  const targets=[];
  t.mock.method(fs,'mkdirSync',target=>{targets.push(target);});
  t.mock.method(fs,'copyFileSync',(_source,target)=>{targets.push(target);});
+ t.mock.method(fs,'writeFileSync',(target)=>{targets.push(target);});
  t.mock.method(fs,'cpSync',(_source,target)=>{targets.push(target);});
  const root=path.resolve('src');
  for(const outDir of ['../.test-artifacts/build-output-unit/dist',path.resolve('.test-artifacts/build-output-unit/absolute')]){
