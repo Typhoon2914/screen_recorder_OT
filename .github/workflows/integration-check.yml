@@ -38,6 +38,8 @@ jobs:
           node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('.test-artifacts/ci-build/manifest.json'));if(!m.permissions.includes('tabCapture')||!m.host_permissions.includes('https://api.telegram.org/*'))process.exit(1)"
       - name: Install isolated Chromium for browser fixtures
         run: npx playwright install --with-deps chromium
+      - name: Teams join DOM regressions
+        run: node scripts/teams-join-dom-validation.mjs
       - name: Preflight browser UI fixture
         run: node scripts/teams-preflight-ui-validation.mjs
       - name: Recorder browser fixture
