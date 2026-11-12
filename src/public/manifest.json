@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "Screen Recorder EXPERIMENT",
-  "version": "1.1.0.0",
-  "description": "Records screen and remuxes MP4 on-device for perfect seeking.",
+  "name": "Screen Recorder OT - LAB",
+  "version": "1.2.0.0",
+  "description": "Experimental Screen Recorder OT build for isolated testing. Not the backup or stable release.",
   "action": {
-    "default_title": "Screen Recorder EXPERIMENT",
+    "default_title": "Screen Recorder OT - LAB (experimental)",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -50,5 +50,5 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "version_name": "1.1.0-dev.1"
+  "version_name": "1.2.0-lab.1"
 }
