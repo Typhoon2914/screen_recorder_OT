@@ -147,7 +147,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   })().catch(async error=>{
     console.error(error);
     await chrome.storage.local.set({automationDiagnostic:{at:new Date().toISOString(),state:'failed',message:error.message}});
-    await log({event:'scheduler_failed',level:'error',message:'Scheduler error: '+error.message});
+    if(!error.scheduledAttemptLogged)await log({event:'scheduler_failed',level:'error',message:'Scheduler error: '+error.message});
   });
 });
 
