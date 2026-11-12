@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import { assertSafeBuildOutput } from "./scripts/build-output-guard.mjs";
+import { writeExperimentIcons } from "./scripts/experimental-icon.mjs";
 
 function copyFFmpegCore() {
   let outputDir;
@@ -34,6 +35,21 @@ function copyFFmpegCore() {
         fs.copyFileSync(worker, path.join(out, "ffmpeg-core.worker.js"));
         console.log("✅ copied ffmpeg-core.worker.js");
       }
+    }
+  };
+}
+
+function applyExperimentalBranding() {
+  let outputDir;
+  return {
+    name: "experimental-icon",
+    configResolved(config) {
+      outputDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      // Runs against the selected build output, never another checkout.
+      writeExperimentIcons(outputDir);
+      console.log("Experimental orange E icons written to", outputDir);
     }
   };
 }
@@ -73,6 +89,7 @@ export default defineConfig({
   },
   plugins: [
     copyFFmpegCore(),
-    copyAutomationModules()
+    copyAutomationModules(),
+    applyExperimentalBranding()
   ]
 });
