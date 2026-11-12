@@ -132,14 +132,8 @@ export function createChromeAutomationController({
     cancelQueue=task.catch(()=>{});return task;
   }
   async function schedulesChanged(nextSchedules=null){
-    if(preflight && !await loadRecord(ACTIVE_RECORDING_KEY) && !await loadRecord(PENDING_RECORDING_KEY)){
-      for(const schedule of currentSchedules){
-        const candidate=preflightCandidate(schedule,now);
-        if(!candidate)continue;
-        try{await preflight(schedule,candidate);}
-        catch(error){await log({event:'preflight_attention',scheduleId:schedule.id,occurrenceKey:candidate.occurrenceKey,level:'warning',message:'Preflight could not complete: '+error.message});}
-      }
-    }
+    // Schedule-change handling must never start a preflight or navigate Teams.
+    // Preflight is tied exclusively to the scheduler alarm and its time window.
     const runs=await loadRecord('automationRuns') || {};
     for(const [id,run] of Object.entries(runs)){
       if(!['joining','retry_pending','starting'].includes(run.state))continue;
@@ -320,6 +314,17 @@ export function createChromeAutomationController({
 
     const now = nowProvider();
     const currentSchedules = structuredClone(await (schedulesProvider?schedulesProvider():Promise.resolve(schedules)));
+    if(preflight && !await loadRecord(ACTIVE_RECORDING_KEY) && !await loadRecord(PENDING_RECORDING_KEY)){
+      for(const schedule of currentSchedules){
+        const candidate=preflightCandidate(schedule,now);
+        if(!candidate)continue;
+        try{await preflight(schedule,candidate);}
+        catch(error){
+          await log({event:'preflight_attention',scheduleId:schedule.id,occurrenceKey:candidate.occurrenceKey,
+            level:'warning',message:'Preflight could not complete: '+error.message});
+        }
+      }
+    }
     const runs=await loadRecord('automationRuns') || {};
     for(const [id,run] of Object.entries(runs)){
       if(run.state==='retry_pending' && nowMsProvider()>run.expiresAt){
