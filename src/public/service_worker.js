@@ -175,7 +175,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
         level:/failed/.test(event.state)?'error':/warning/.test(event.state)?'warning':'info',
         occurrenceKey:event.occurrenceKey,
         heartbeatNumber:event.heartbeatNumber,
-        message:labels[event.state]+(event.message?' '+event.message:'')}).catch(console.error);
+        message:labels[event.state]+(event.elapsedMinutes!=null?' Elapsed: '+event.elapsedMinutes+' min.':'')+(event.message?' '+event.message:'')}).catch(console.error);
     }
   }
 });
