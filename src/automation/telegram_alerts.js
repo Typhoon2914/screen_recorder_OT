@@ -29,7 +29,9 @@ export function alertForEvent(entry) {
     overlap_deferred: ['warning','Lecture delayed by another recording'],
     audio_warning: ['warning','Recording audio warning'],
     target_grant_lost: ['warning','Teams capture authorization lost'],
-    scheduler_failed: ['critical','Recorder scheduler encountered an error']
+    scheduler_failed: ['critical','Recorder scheduler encountered an error'],
+    preflight_attention: ['warning','Teams needs attention before lecture'],
+    preflight_refreshed: ['info','Teams tab refreshed before lecture']
   };
   const spec=descriptions[entry.event];
   if(!spec)return null;
