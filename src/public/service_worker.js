@@ -3,6 +3,7 @@ import { loadEnabledSchedules } from "./automation/schedule_store.js";
 import {createTabAuthorization} from "./automation/tab_authorization.js";
 const tabAuthorization=createTabAuthorization(chrome);
 import {createTeamsJoiner} from './automation/teams_join.js';
+import {createTeamsPreflight} from './automation/teams_preflight.js';
 import {createActivityLog} from './automation/activity_log.js';
 import {createTelegramAlerts,validateTelegramConfig} from './automation/telegram_alerts.js';
 const telegram=createTelegramAlerts({storage:chrome.storage.local});
@@ -14,6 +15,7 @@ async function log(entry){
   }catch(error){console.error('Could not queue Telegram notification:',error.message);}
 }
 const teamsJoiner=createTeamsJoiner(chrome,{log});
+const teamsPreflight=createTeamsPreflight({api:chrome,authorize:tabAuthorization,inspect:(schedule,target,options)=>teamsJoiner.inspect(schedule,target,options),log});
 import {createSetupActions} from './automation/setup_feedback.js';
 const setupAction=createSetupActions({authorization:tabAuthorization,joiner:teamsJoiner,api:chrome,log});
 import {refreshNativeCompanion,syncNativeCompanion} from "./automation/native_client.js";
@@ -37,6 +39,7 @@ const automationController = createChromeAutomationController({
   recorderUrl: RECORDER_URL,
   schedulesProvider: () => loadEnabledSchedules(chrome),
   log,
+  preflight:(schedule,candidate)=>teamsPreflight(schedule,candidate),
   monitorActive:async active=>{
     if(!active.schedule?.teamsAutoJoin)return null;
     const target=await tabAuthorization.check(active.scheduleId);
