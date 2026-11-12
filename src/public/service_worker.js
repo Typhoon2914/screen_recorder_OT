@@ -53,6 +53,7 @@ const automationController = createChromeAutomationController({
   scheduledTargetProvider: async (id,run)=>{
     const target=await tabAuthorization.check(id);
     await automationController.assertCurrent(run.schedule,run.occurrenceKey);
+    await log({event:'tab_located',scheduleId:id,occurrenceKey:run.occurrenceKey,message:'Authorized tab found and checked.'});
     if(run.schedule.teamsAutoJoin)return {...target,...await teamsJoiner.ensure(run.schedule,target,{...run,assertCurrent:()=>automationController.assertCurrent(run.schedule,run.occurrenceKey)})};
     return target;
   }
