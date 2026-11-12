@@ -12,7 +12,10 @@ const activityLog=createActivityLog(chrome);
 async function log(entry){
   await activityLog(entry);
   try {
-    if(await telegram.enqueue(entry))void telegram.flush().catch(console.error);
+    const {automationSchedules=[]}=await chrome.storage.local.get('automationSchedules');
+    const schedule=automationSchedules.find(item=>item.id===entry.scheduleId);
+    const notification={...entry,scheduleName:schedule?.title || entry.scheduleName || entry.scheduleId};
+    if(await telegram.enqueue(notification))void telegram.flush().catch(console.error);
   }catch(error){console.error('Could not queue Telegram notification:',error.message);}
 }
 const teamsJoiner=createTeamsJoiner(chrome,{log});
