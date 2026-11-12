@@ -195,6 +195,16 @@ export function createTeamsJoiner(chromeApi,{sleep=ms=>new Promise(r=>setTimeout
       const result=results?.[0]?.result;
       if(!result || !['waiting','prejoin','joining','joined','blocked','departed'].includes(result.state) || (result.ready===true && result.state!=='joined'))throw Error('Invalid Teams join page result');
       await log({event:'teams_'+result.state,scheduleId:schedule.id,level:result.state==='blocked'?'error':'info',message:result.reason || result.state});
+      // These milestones come only from observed DOM transitions in the
+      // authorized Teams tab, never from a guessed schedule state.
+      if(result.state==='prejoin' && result.reason==='Opening the configured channel meeting')
+        await log({event:'teams_meeting_located',scheduleId:schedule.id,occurrenceKey,message:'Found the channel meeting and clicked its entry; opening pre-join.'});
+      if(result.state==='joining' && result.reason==='Join clicked with microphone and camera off'){
+        await log({event:'teams_prejoin_ready',scheduleId:schedule.id,occurrenceKey,message:'Join now appeared with microphone/camera off and Computer audio selected.'});
+        await log({event:'teams_join_clicked',scheduleId:schedule.id,occurrenceKey,message:'Clicked Join now. Awaiting joined-meeting confirmation.'});
+      }
+      if(result.state==='joined' && result.ready===true)
+        await log({event:'teams_joined',scheduleId:schedule.id,occurrenceKey,message:'Verified joined meeting via the Teams Leave control.'});
       if(result.state==='departed'){
         sessions[target.tabId]={...record,phase:'departed'};
         await chromeApi.storage.session.set({[key]:sessions});
