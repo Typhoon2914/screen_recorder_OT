@@ -24,6 +24,7 @@ export function alertForEvent(entry) {
     retry_expired: ['critical','Lecture start window expired without a recording'],
     expired: ['critical','Lecture start window expired without a recording'],
     attempt_failed: ['warning','Recording start attempt failed; retry may follow'],
+    retry_pending: ['warning','Meeting not ready; automatic retries are active'],
     setup_authorization_failed: ['warning','Capture authorization failed'],
     recorder_tab_closed: ['critical','Recorder tab closed during a scheduled run'],
     overlap_deferred: ['warning','Lecture delayed by another recording'],
