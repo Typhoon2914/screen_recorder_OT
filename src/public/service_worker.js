@@ -4,6 +4,7 @@ import {createTabAuthorization} from "./automation/tab_authorization.js";
 const tabAuthorization=createTabAuthorization(chrome);
 import {createTeamsJoiner} from './automation/teams_join.js';
 import {createTeamsPreflight} from './automation/teams_preflight.js';
+import {detectRecordingStalls} from './automation/recording_watchdog.js';
 import {createActivityLog} from './automation/activity_log.js';
 import {createTelegramAlerts,validateTelegramConfig} from './automation/telegram_alerts.js';
 const telegram=createTelegramAlerts({storage:chrome.storage.local});
@@ -136,7 +137,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       return;
     }
     await automationController.handleAlarm(alarm);
-    if(alarm.name==='screen-recorder-automation-poll')await telegram.flush();
+    if(alarm.name==='screen-recorder-automation-poll'){
+      const {automationActiveRecording:active=null,captureEvents=[]}=await chrome.storage.local.get(['automationActiveRecording','captureEvents']);
+      for(const warning of detectRecordingStalls({active,events:captureEvents})){
+        await log(warning);
+      }
+      await telegram.flush();
+    }
   })().catch(async error=>{
     console.error(error);
     await chrome.storage.local.set({automationDiagnostic:{at:new Date().toISOString(),state:'failed',message:error.message}});
