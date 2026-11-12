@@ -355,6 +355,9 @@ export function createChromeAutomationController({
         }
         await log({event:'attempt_failed',level:'error',scheduleId:schedule.id,occurrenceKey:getOccurrenceKey(schedule,now),message:error.message});
         if(run?.expiresAt)await retryStatus(schedule,run.occurrenceKey,run.expiresAt,error.message).catch(()=>{});
+        // Domain-level join/capture errors have already been reported and queued
+        // for retry. Do not misclassify them as a separate scheduler crash.
+        error.scheduledAttemptLogged=true;
         throw error;
       }
       if(result)dispatched.push(result);
