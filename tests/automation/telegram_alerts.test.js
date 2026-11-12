@@ -25,6 +25,20 @@ test('early absence of a meeting is not a failure alert',()=>{
   assert.equal(alertForEvent({event:'recording_finished',scheduleId:'a'}),null);
   assert.equal(alertForEvent({event:'saved'}),null);
   assert.equal(alertForEvent({event:'retry_expired',scheduleId:'a'}).severity,'critical');
+  assert.equal(alertForEvent({event:'retry_pending',scheduleId:'a',occurrenceKey:'o'}).severity,'warning');
+});
+test('waiting-for-meeting warning is sent once per occurrence despite scheduler retries',async()=>{
+  let count=0;
+  const storage=fakeStorage({telegramAlerts:config});
+  const notifier=createTelegramAlerts({storage,now:()=>100_000,fetchImpl:async()=>{
+    count++;return {ok:true,json:async()=>({ok:true})};
+  }});
+  const warning={event:'retry_pending',scheduleId:'lecture',occurrenceKey:'lecture|date|time',message:'Meeting has not started; retrying'};
+  for(let i=0;i<3;i++){await notifier.enqueue(warning);await notifier.flush();}
+  assert.equal(count,1);
+  await notifier.enqueue({event:'retry_expired',scheduleId:'lecture',occurrenceKey:warning.occurrenceKey});
+  await notifier.flush();
+  assert.equal(count,2,'critical timeout alert is independent of the initial warning');
 });
 test('queues once, sends one message, persists sent state across service worker restarts',async()=>{
   let count=0;
