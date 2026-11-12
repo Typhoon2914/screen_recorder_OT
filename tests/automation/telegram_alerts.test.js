@@ -20,8 +20,8 @@ test('credentials are validated and not included in alert content',()=>{
   assert.throws(()=>validateTelegramConfig({...config,token:'bad'}),/bot token/);
   assert.equal(alertForEvent({event:'saved',scheduleId:'lecture-a',message:'https://example.com/link'}).message.includes('example.com'),false);
 });
-test('early absence of a meeting is not a failure alert',()=>{
-  assert.equal(alertForEvent({event:'retry_pending',scheduleId:'a'}),null);
+test('meeting absence warns while nonfailure lifecycle events remain quiet',()=>{
+  assert.equal(alertForEvent({event:'retry_pending',scheduleId:'a'}).severity,'warning');
   assert.equal(alertForEvent({event:'recording_finished',scheduleId:'a'}),null);
   assert.equal(alertForEvent({event:'saved'}),null);
   assert.equal(alertForEvent({event:'retry_expired',scheduleId:'a'}).severity,'critical');
