@@ -37,6 +37,7 @@ let mimeType = "";
 let fileExt = "";
 let startedAt = 0;
 let timerHandle = null;
+let recordingHeartbeatHandle = null;
 let pendingAutomationRequest = null;
 let activeAutomationRecordingId = null;
 let armedStream = null;
@@ -288,6 +289,26 @@ async function startRecording() {
     }
 
     startedAt = Date.now();
+    clearInterval(recordingHeartbeatHandle);
+    recordingHeartbeatHandle=null;
+    if(recordingContext?.scheduleId){
+      let heartbeatNumber=0;
+      recordingHeartbeatHandle=setInterval(()=>{
+        if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
+        const tracks=captureStream?.getTracks() || [];
+        const videoLive=tracks.some(t=>t.kind==='video' && t.readyState==='live');
+        const audioLive=tracks.some(t=>t.kind==='audio' && t.readyState==='live');
+        if(!videoLive || !audioLive)return;
+        heartbeatNumber++;
+        // Verify locally each minute; notify after minute 1, then every 5.
+        if(heartbeatNumber!==1 && heartbeatNumber%5!==0)return;
+        captureEvidence('recording_heartbeat',{
+          ...recordingContext,heartbeatNumber,
+          elapsedMinutes:Math.floor((Date.now()-startedAt)/60000),
+          message:'Recorder active with live audio and video tracks. File not yet saved.'
+        }).catch(console.warn);
+      },60000);
+    }
     clearInterval(timerHandle);
     timerHandle = setInterval(() => {
       timerEl.textContent = fmtTime(Date.now() - startedAt);
@@ -327,6 +348,7 @@ async function startRecording() {
 async function handleStop() {
   captureEvidence('capture_stopped',{...recordingContext}).catch(console.warn);
   clearInterval(timerHandle);
+  clearInterval(recordingHeartbeatHandle);recordingHeartbeatHandle=null;
   clearTimeout(deadlineTimer);
   $('pauseBtn').disabled=true;
 
