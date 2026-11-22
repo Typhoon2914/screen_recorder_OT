@@ -213,18 +213,20 @@ async function startRecording() {
       const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
       authorizedTargetId=prepared.targetTabId;
       const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+      let audioSilenceCycle=0;
       authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,
         silenceSeconds:labAudioMonitor.silenceSeconds,
         onAudioState:({state,durationSeconds})=>{
           if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
+          if(state==='silent')audioSilenceCycle++;
           const event=state==='silent'?'audio_silence_prolonged':'audio_resumed';
           const message=state==='silent'
             ?'Captured meeting audio has been quiet for '+durationSeconds+' seconds. Recording continues; this does not prove the professor is absent.'
             :'Captured meeting audio resumed after '+durationSeconds+' seconds of quiet.';
-          captureEvidence(event,{...recordingContext,message}).catch(console.warn);
+          captureEvidence(event,{...recordingContext,audioSilenceCycle,message}).catch(console.warn);
         },onSilence:message=>{
         if(!recordingWarnings.includes(message))recordingWarnings.push(message);
-        detail.textContent=message;captureEvidence('audio_warning',{message}).catch(console.warn);
+        detail.textContent=message;captureEvidence('audio_warning',{...recordingContext,message}).catch(console.warn);
       }});
       recordingContext.targetTabId=authorizedTargetId;
       recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;

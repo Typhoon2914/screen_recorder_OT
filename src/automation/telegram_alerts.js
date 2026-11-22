@@ -80,7 +80,8 @@ export function createTelegramAlerts({storage,fetchImpl=fetch,now=()=>Date.now()
       const queue=data.telegramAlertOutbox || [],delivered=data.telegramAlertDeliveredKeys || [];
       const windowId=['attempt_failed','audio_warning','overlap_deferred','scheduler_failed'].includes(alert.event)?Math.floor(now()/600000):'once';
       const key=[alert.event,alert.scheduleId,alert.occurrenceKey||Math.floor(now()/3600000),
-        alert.event==='recording_heartbeat' ? String(entry.heartbeatNumber || windowId) : windowId].join('|');
+        alert.event==='recording_heartbeat' ? String(entry.heartbeatNumber || windowId) :
+        ['audio_silence_prolonged','audio_resumed'].includes(alert.event) ? String(entry.audioSilenceCycle || 1) : windowId].join('|');
       if(delivered.includes(key)||queue.some(x=>x.key===key))return false;
       await storage.set({telegramAlertOutbox:[...queue,{key,alert,tries:0,nextAt:now()}].slice(-80)});
       return true;
