@@ -38,6 +38,8 @@ export function alertForEvent(entry) {
     recorder_tab_closed: ['critical','Recorder tab closed during a scheduled run'],
     overlap_deferred: ['warning','Lecture delayed by another recording'],
     audio_warning: ['warning','Recording audio warning'],
+    audio_silence_prolonged: ['warning','No detectable meeting audio for configured period; recording continues'],
+    audio_resumed: ['info','Meeting audio detected again'],
     target_grant_lost: ['warning','Teams capture authorization lost'],
     scheduler_failed: ['critical','Recorder scheduler encountered an error'],
     preflight_attention: ['warning','Teams needs attention before lecture'],

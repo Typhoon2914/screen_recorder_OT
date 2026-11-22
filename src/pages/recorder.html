@@ -168,6 +168,8 @@
         <label><input type="checkbox" id="telegramEnabled" /> Enable Telegram alerts</label>
         <label>Bot token <input type="password" id="telegramToken" autocomplete="off" placeholder="Leave blank to keep the saved token" /></label>
         <label>Destination chat ID <input type="text" id="telegramChatId" autocomplete="off" placeholder="Your numeric Telegram chat ID" /></label>
+        <label>LAB continuous silence alert after <select id="labSilenceSeconds"><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120" selected>2 minutes</option><option value="180">3 minutes</option><option value="300">5 minutes</option></select></label>
+        <p class="notice">Audio silence is not proof that the professor left. Recording continues. This setting applies to the next authorized-tab recording.</p>
         <div class="actions">
           <button type="button" class="btn" id="telegramSave">Save Telegram settings</button>
           <button type="button" class="btn" id="telegramTest">Send test message</button>

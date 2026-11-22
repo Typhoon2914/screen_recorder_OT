@@ -212,7 +212,17 @@ async function startRecording() {
       if(armedStream)throw Error('Disarm the manual capture before using authorized tab capture');
       const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
       authorizedTargetId=prepared.targetTabId;
-      authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,onSilence:message=>{
+      const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+      authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,
+        silenceSeconds:labAudioMonitor.silenceSeconds,
+        onAudioState:({state,durationSeconds})=>{
+          if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
+          const event=state==='silent'?'audio_silence_prolonged':'audio_resumed';
+          const message=state==='silent'
+            ?'Captured meeting audio has been quiet for '+durationSeconds+' seconds. Recording continues; this does not prove the professor is absent.'
+            :'Captured meeting audio resumed after '+durationSeconds+' seconds of quiet.';
+          captureEvidence(event,{...recordingContext,message}).catch(console.warn);
+        },onSilence:message=>{
         if(!recordingWarnings.includes(message))recordingWarnings.push(message);
         detail.textContent=message;captureEvidence('audio_warning',{message}).catch(console.warn);
       }});

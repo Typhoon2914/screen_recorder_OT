@@ -1,3 +1,4 @@
+import {normalizeSilenceSeconds} from '../automation/audio_monitor.js';
 const $=id=>document.getElementById(id);
 const status=$('telegramStatus');
 const request=async message=>{
@@ -8,6 +9,8 @@ const request=async message=>{
 async function refresh(){
   const config=await request({type:'TELEGRAM_STATUS'});
   $('telegramEnabled').checked=config.enabled;
+  const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+  $('labSilenceSeconds').value=String(normalizeSilenceSeconds(labAudioMonitor.silenceSeconds));
   $('telegramChatId').value=config.chatId;
   $('telegramToken').value='';
   status.textContent=config.configured
@@ -17,6 +20,7 @@ async function refresh(){
 $('telegramSave').addEventListener('click',async()=>{
   status.textContent='Saving Telegram settings…';
   try{
+    await chrome.storage.local.set({labAudioMonitor:{silenceSeconds:normalizeSilenceSeconds($('labSilenceSeconds').value)}});
     await request({type:'TELEGRAM_SAVE_CONFIG',enabled:$('telegramEnabled').checked,
       token:$('telegramToken').value.trim(),chatId:$('telegramChatId').value.trim()});
     await refresh();status.textContent='Telegram settings saved locally. Use Send test message to verify delivery.';
