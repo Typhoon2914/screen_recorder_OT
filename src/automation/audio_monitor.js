@@ -1,10 +1,28 @@
 // Pure, testable signal-state tracker. Silence is not evidence that a professor left.
 export const DEFAULT_SILENCE_SECONDS = 120;
-export const SILENCE_OPTIONS_SECONDS = Object.freeze([30, 60, 120, 180, 300]);
-
-export function normalizeSilenceSeconds(value) {
-  const seconds = Number(value);
-  return SILENCE_OPTIONS_SECONDS.includes(seconds) ? seconds : DEFAULT_SILENCE_SECONDS;
+// Invalid persisted values fall back to safe defaults, not unbounded timers.
+export function validSeconds(value, minimum, maximum, fallback) {
+  if(value === undefined || value === null || value === '')return fallback;
+  const n=Number(value);
+  return Number.isSafeInteger(n) && n>=minimum && n<=maximum ? n : fallback;
+}
+export const normalizeSilenceSeconds=value=>validSeconds(value,5,3600,120);
+export const normalizeShortWarningSeconds=value=>validSeconds(value,0,120,10);
+export const normalizeHeartbeatMinutes=value=>validSeconds(value,0,120,5);
+export function validateLabNotificationSettings(input={}) {
+  const fields=[
+    ['silenceSeconds',5,3600],
+    ['shortWarningSeconds',0,120],
+    ['heartbeatMinutes',0,120]
+  ];
+  const result={};
+  for(const [name,min,max] of fields){
+    const value=String(input[name]??'').trim();
+    if(!/^\d+$/.test(value) || Number(value)<min || Number(value)>max || !Number.isSafeInteger(Number(value)))
+      throw Error(name+' must be a whole number between '+min+' and '+max);
+    result[name]=Number(value);
+  }
+  return result;
 }
 
 export function createAudioSilenceTracker({

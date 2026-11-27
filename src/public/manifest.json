@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Screen Recorder OT - LAB",
-  "version": "1.2.0.2",
+  "version": "1.2.0.3",
   "description": "Experimental Screen Recorder OT build for isolated testing. Not the backup or stable release.",
   "action": {
     "default_title": "Screen Recorder OT - LAB (experimental)",
@@ -50,5 +50,5 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "version_name": "1.2.0-lab.3"
+  "version_name": "1.2.0-lab.4"
 }

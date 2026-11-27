@@ -4,6 +4,7 @@ import { recordingFilename, createSaveSession, createVerifiedSaver } from "../au
 import { vault } from "./recording_vault.js";
 import {recorderOptions} from '../automation/recording_options.js';
 import {acquireAuthorizedTab,inspectCapturedAudio} from '../automation/tab_capture.js';
+import {normalizeSilenceSeconds,normalizeShortWarningSeconds,normalizeHeartbeatMinutes} from '../automation/audio_monitor.js';
 import './tab_capture_ui.js';
 import "./schedule_ui.js";
 import "./workspace_ui.js";
@@ -215,7 +216,9 @@ async function startRecording() {
     showMode("live");
     detail.textContent = automationRequest?.captureMode==='tab'?"Checking authorized target and audio…":"Opening chooser…";
 
-    // Monitor actual audio in both manual and scheduled captures.
+    // Freeze monitoring preferences for this recording; later UI edits take effect next time.
+    const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+    const monitoring={silenceSeconds:normalizeSilenceSeconds(labAudioMonitor.silenceSeconds),shortWarningSeconds:normalizeShortWarningSeconds(labAudioMonitor.shortWarningSeconds),heartbeatMinutes:normalizeHeartbeatMinutes(labAudioMonitor.heartbeatMinutes)};
     let audioSilenceCycle=0;
     const audioState=({state,durationSeconds})=>{
       if(mediaRecorder?.state!=='recording')return;
@@ -237,9 +240,8 @@ async function startRecording() {
       if(armedStream)throw Error('Disarm the manual capture before using authorized tab capture');
       const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
       authorizedTargetId=prepared.targetTabId;
-      const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
       authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,
-        silenceSeconds:labAudioMonitor.silenceSeconds,
+        silenceSeconds:monitoring.silenceSeconds,shortWarningSeconds:monitoring.shortWarningSeconds,
         onAudioState:audioState,onSilence:audioWarning});
       recordingContext.targetTabId=authorizedTargetId;
       recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;
@@ -254,9 +256,8 @@ async function startRecording() {
     if(automationRequest && !stream.getAudioTracks().some(t=>t.readyState==='live'))throw Error('Scheduled capture has no live audio track');
     if(!automationRequest && !$('includeAudio').checked){stream.getAudioTracks().forEach(track=>{stream.removeTrack(track);track.stop();});}
     if(!authorizedCapture && stream.getAudioTracks().some(t=>t.readyState==='live')){
-      const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
       manualAudioMonitor=await inspectCapturedAudio(stream,{
-        silenceSeconds:labAudioMonitor.silenceSeconds,
+        silenceSeconds:monitoring.silenceSeconds,shortWarningSeconds:monitoring.shortWarningSeconds,
         onAudioState:audioState,onSilence:audioWarning,restorePlayback:false
       });
     }
@@ -326,23 +327,23 @@ async function startRecording() {
     startedAt = Date.now();
     clearInterval(recordingHeartbeatHandle);
     recordingHeartbeatHandle=null;
-    if(recordingContext?.scheduleId){
+    // One heartbeat every configured interval. Manual and scheduled captures share this.
+    if(monitoring.heartbeatMinutes>0){
       let heartbeatNumber=0;
+      const intervalMinutes=monitoring.heartbeatMinutes;
       recordingHeartbeatHandle=setInterval(()=>{
-        if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
+        if(mediaRecorder?.state!=='recording')return;
         const tracks=captureStream?.getTracks() || [];
         const videoLive=tracks.some(t=>t.kind==='video' && t.readyState==='live');
         const audioLive=tracks.some(t=>t.kind==='audio' && t.readyState==='live');
         if(!videoLive || !audioLive)return;
         heartbeatNumber++;
-        // Verify locally each minute; notify after minute 1, then every 5.
-        if(heartbeatNumber!==1 && heartbeatNumber%5!==0)return;
         captureEvidence('recording_heartbeat',{
           ...recordingContext,heartbeatNumber,
           elapsedMinutes:Math.floor((Date.now()-startedAt)/60000),
           message:'Recorder active with live audio and video tracks. File not yet saved.'
         }).catch(console.warn);
-      },60000);
+      },intervalMinutes*60000);
     }
     clearInterval(timerHandle);
     timerHandle = setInterval(() => {

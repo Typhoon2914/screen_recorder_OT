@@ -1,12 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createAudioSilenceTracker,normalizeSilenceSeconds} from '../../src/automation/audio_monitor.js';
+import {createAudioSilenceTracker,normalizeSilenceSeconds,normalizeShortWarningSeconds,normalizeHeartbeatMinutes,validateLabNotificationSettings} from '../../src/automation/audio_monitor.js';
 import {alertForEvent} from '../../src/automation/telegram_alerts.js';
 
 test('silence threshold is bounded to supported options',()=>{
   assert.equal(normalizeSilenceSeconds('60'),60);
   assert.equal(normalizeSilenceSeconds('9999'),120);
   assert.equal(normalizeSilenceSeconds(null),120);
+  assert.equal(normalizeSilenceSeconds('31'),31);
+  assert.equal(normalizeShortWarningSeconds('0'),0);
+  assert.equal(normalizeHeartbeatMinutes('0'),0);
+  assert.equal(normalizeHeartbeatMinutes('15'),15);
 });
 test('silent audio sends one warning, does not stop capture, and sends recovery once',()=>{
   const events=[];
@@ -36,4 +40,15 @@ test('Telegram distinguishes silence and recovery without asserting lecturer abs
   assert.equal(warning.severity,'warning');
   assert.equal(resumed.severity,'info');
   assert.doesNotMatch(warning.message,/professor (has )?left/i);
+});
+
+test('editable notification settings reject invalid inputs, allow disable, and retain custom times',()=>{
+  assert.deepEqual(validateLabNotificationSettings({silenceSeconds:'37',shortWarningSeconds:'0',heartbeatMinutes:'17'}),
+    {silenceSeconds:37,shortWarningSeconds:0,heartbeatMinutes:17});
+  for(const input of [
+    {silenceSeconds:'0',shortWarningSeconds:'10',heartbeatMinutes:'5'},
+    {silenceSeconds:'30',shortWarningSeconds:'-1',heartbeatMinutes:'5'},
+    {silenceSeconds:'30',shortWarningSeconds:'10',heartbeatMinutes:'2.5'},
+    {silenceSeconds:'30',shortWarningSeconds:'10',heartbeatMinutes:'121'}
+  ])assert.throws(()=>validateLabNotificationSettings(input),/whole number/);
 });

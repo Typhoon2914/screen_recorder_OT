@@ -20,7 +20,7 @@ test('every requested lifecycle milestone is a named, positive Telegram notifica
     const alert=alertForEvent({...base,event});
     assert.ok(alert,event);
     assert.equal(alert.severity,'info',event);
-    assert.match(alert.message,/Lecture: Test Meeting/);
+    assert.match(alert.message,/Recording: Test Meeting/);
     assert.equal(alert.message.includes(base.scheduleId),false,'Do not display internal schedule UUID');
   }
 });

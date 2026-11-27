@@ -1,4 +1,4 @@
-import {normalizeSilenceSeconds} from '../automation/audio_monitor.js';
+import {normalizeSilenceSeconds,normalizeShortWarningSeconds,normalizeHeartbeatMinutes,validateLabNotificationSettings} from '../automation/audio_monitor.js';
 const $=id=>document.getElementById(id);
 const status=$('telegramStatus');
 const request=async message=>{
@@ -11,6 +11,8 @@ async function refresh(){
   $('telegramEnabled').checked=config.enabled;
   const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
   $('labSilenceSeconds').value=String(normalizeSilenceSeconds(labAudioMonitor.silenceSeconds));
+  $('labShortWarningSeconds').value=String(normalizeShortWarningSeconds(labAudioMonitor.shortWarningSeconds));
+  $('labHeartbeatMinutes').value=String(normalizeHeartbeatMinutes(labAudioMonitor.heartbeatMinutes));
   $('telegramChatId').value=config.chatId;
   $('telegramToken').value='';
   status.textContent=config.configured
@@ -20,9 +22,10 @@ async function refresh(){
 $('telegramSave').addEventListener('click',async()=>{
   status.textContent='Saving Telegram settings…';
   try{
-    await chrome.storage.local.set({labAudioMonitor:{silenceSeconds:normalizeSilenceSeconds($('labSilenceSeconds').value)}});
+    const settings=validateLabNotificationSettings({silenceSeconds:$('labSilenceSeconds').value,shortWarningSeconds:$('labShortWarningSeconds').value,heartbeatMinutes:$('labHeartbeatMinutes').value});
     await request({type:'TELEGRAM_SAVE_CONFIG',enabled:$('telegramEnabled').checked,
       token:$('telegramToken').value.trim(),chatId:$('telegramChatId').value.trim()});
+    await chrome.storage.local.set({labAudioMonitor:settings});
     await refresh();status.textContent='Telegram settings saved locally. Use Send test message to verify delivery.';
   }catch(error){status.textContent='Telegram settings not saved: '+error.message;}
 });
