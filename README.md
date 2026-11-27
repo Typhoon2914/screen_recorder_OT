@@ -1,38 +1,49 @@
-# Screen Recorder — experimental build
+# Screen Recorder OT — source repository
 
-This branch is **not the stable recorder** and is not ready for unattended Teams deployment. It adds verified automatic downloads, finalized-recording recovery, schedule editing, armed capture, quality controls and diagnostics. Manual recording remains available.
+Chrome MV3 screen/tab recorder with Teams scheduling, LAB Telegram notifications, verified download flow, and an optional native recording companion. **A passing test suite is regression evidence, not proof of successful live Teams recording.**
 
-## Start here
+## Worktrees and release boundaries
 
-Use Node 22.12+ (validated with Node 24.16.0 on Windows). In this worktree:
+This repository uses two local Git worktrees; they are **not** two unrelated repositories:
+
+| Role | Local working tree | Branch | Installed unpacked extension |
+| --- | --- | --- | --- |
+| Stable, protected | `G:\\MyPersonalProjects\\screen_recorder_OT` | `main` | `G:\\MyPersonalProjects\\screen_recorder_OT\\dist` |
+| Development/LAB | `G:\\MyPersonalProjects\\screen_recorder_OT_LAB` | `feature/lab-telegram-monitoring-control` | `G:\\MyPersonalProjects\\screen_recorder_OT_LAB\\dist-lab` |
+
+`develop` is the intended integration branch. Feature branches are not production releases. Do not merge LAB into `main` or update Stable without explicit release approval.
+
+**Important:** The default Vite build output is `dist`. Never use a default build as a way of updating either installed unpacked extension. Build into a disposable directory, inspect its manifest, preserve the installed LAB identity metadata, back up `dist-lab`, and reload LAB only when it is not recording or saving. The build guard intentionally refuses overwriting key-bearing installed manifests.
+
+## Development and verification
+
+In the LAB working tree:
 
 ```powershell
+git fetch origin
+git status --short
 npm ci
 npm test
-npm run build
-npm run verify
+npm run build -- --outDir ../.test-artifacts/ci-build
 ```
 
-Load **this worktree's dist** into a separate Chrome test profile. The extension is named **Screen Recorder EXPERIMENT**. Never replace the stable installation.
+The build stays under `.test-artifacts` and must not be confused with the installed extension. Chrome live testing is a separate acceptance step and should verify Telegram delivery, actual captured audio/video, downloads, and Teams transitions.
 
-- [Windows installation and loading](docs/WINDOWS_EXPERIMENT.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Experimental Teams auto-join setup and limits](docs/TEAMS_AUTO_JOIN.md)
-- [Real Teams auto-join acceptance and tonight configuration](docs/TEAMS_AUTO_JOIN_ACCEPTANCE.md)
-- [Architecture and feasibility](docs/EXPERIMENT_ARCHITECTURE.md)
-- [Tests and acceptance](docs/ACCEPTANCE.md)
-- [Troubleshooting and limitations](docs/TROUBLESHOOTING.md)
-- [Performance report](docs/PERFORMANCE.md)
-- [Implementation summary](docs/IMPLEMENTATION_SUMMARY.md)
+## Repository map
 
-## Capture boundary
+- `src/automation/`: business logic and Chrome/Teams/Telegram adapters
+- `src/scripts/`: recorder page, settings, and workspace UI controllers
+- `src/pages/`, `src/styles/`, `src/public/`: UI and MV3 manifest
+- `tests/`: unit, baseline, integration, and schedule regressions
+- `scripts/`: disposable browser/recording test harnesses and build safety
+- `companion/`: optional, separately configured native recording experiment
+- `docs/`: architecture, acceptance evidence, setup and troubleshooting
+- `old_versions/`: historical snapshots, not production entrypoints
 
-An alarm cannot grant capture permission to an uninvoked tab. The experimental **Authorized tab** provider instead uses one legitimate toolbar invocation for an exact target, then obtains a fresh one-use tabCapture stream for each schedule while that session grant remains usable. It releases all tracks between recordings. Chrome restart, target closure, cross-origin navigation or permission loss requires reauthorization. This is not permanent install-once authorization.
+For boundaries, retention, and source-of-truth guidance, see [repository layout](docs/REPOSITORY_LAYOUT.md).
 
-Manual getDisplayMedia and the existing pre-armed workflow remain available. The recorder, MediaRecorder, duration stop, FFmpeg fast-start, recovery vault and verified downloads are shared; Playwright is only a test controller, not the recording engine.
+## Capture limitations
 
-See [authorized-tab setup, architecture and limitations](docs/AUTHORIZED_TAB_CAPTURE.md) and [integrated acceptance evidence](docs/INTEGRATED_TAB_ACCEPTANCE.md). Real acceptance status must be read separately from passing unit tests.
+The scheduled Authorized Tab provider needs a legitimate user toolbar grant to an exact target. Chrome restart, target closure, cross-origin navigation, or grant loss requires reauthorization. It does not provide permanent unattended browser capture. LAB silence monitoring measures **captured audio**, not the identity of the speaker. Telegram remote control and professor-specific presence detection are not implemented at this checkpoint.
 
-The optional local OBS companion uses native capture rather than Chrome's picker. It is **mock-tested, not live-validated**, needs an isolated OBS/source setup, and does not log in to Teams, join meetings or resolve lobbies. Neither path claims cold unattended end-to-end Teams operation.
-
-The browser harness loads the real production extension in a fresh profile and encodes actual synthetic audio/video. It substitutes the picker boundary; it does **not** prove real tab capture permission or Teams readiness. Downloads, file decoding, duration, playback, seeking and screenshots are recorded under ignored .test-artifacts/.
+See [authorized tab capture](docs/AUTHORIZED_TAB_CAPTURE.md), [Teams join](docs/TEAMS_AUTO_JOIN.md), [testing](docs/TESTING.md), and [real acceptance evidence](docs/JOIN_STATE_RECOVERY_ACCEPTANCE_2026-11-07.md).
