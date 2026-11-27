@@ -24,3 +24,10 @@ Thumbs.db
 
 # Isolated browser profiles, generated diagnostics and synthetic recordings
 .test-artifacts/
+
+# LAB unpacked extension, deployment backups and disposable test outputs
+# These are generated locally, not source artifacts.
+dist-lab/
+dist-lab-backup-*/
+dist-lab-test/
+dist-lab-stage-*/

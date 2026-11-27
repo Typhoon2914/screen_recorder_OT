@@ -3,7 +3,8 @@ import { createRecorderBridge } from "../automation/recorder_bridge.js";
 import { recordingFilename, createSaveSession, createVerifiedSaver } from "../automation/recording_safety.js";
 import { vault } from "./recording_vault.js";
 import {recorderOptions} from '../automation/recording_options.js';
-import {acquireAuthorizedTab} from '../automation/tab_capture.js';
+import {acquireAuthorizedTab,inspectCapturedAudio} from '../automation/tab_capture.js';
+import {normalizeSilenceSeconds,normalizeShortWarningSeconds,normalizeHeartbeatMinutes} from '../automation/audio_monitor.js';
 import './tab_capture_ui.js';
 import "./schedule_ui.js";
 import "./workspace_ui.js";
@@ -53,9 +54,16 @@ let recordingWarnings=[];
 let authorizedCapture=null;
 let authorizedTargetId=null;
 let recordingContext=null;
-async function captureEvidence(state,fields={}){
-  const {captureEvents=[]}=await chrome.storage.local.get('captureEvents');
-  await chrome.storage.local.set({captureEvents:[...captureEvents,{at:new Date().toISOString(),state,...fields}].slice(-100)});
+let manualAudioMonitor=null;
+let evidenceQueue=Promise.resolve();
+function captureEvidence(state,fields={}){
+  const item={at:new Date().toISOString(),state,...fields};
+  const op=evidenceQueue.then(async()=>{
+    const {captureEvents=[]}=await chrome.storage.local.get('captureEvents');
+    await chrome.storage.local.set({captureEvents:[...captureEvents,item].slice(-200)});
+  });
+  evidenceQueue=op.catch(()=>{});
+  return op;
 }
 async function captureRequest(type,request){
   const result=await chrome.runtime.sendMessage({type,scheduleId:request.scheduleId,occurrenceKey:request.occurrenceKey});
@@ -200,22 +208,41 @@ async function startRecording() {
   try {
     saveSession.begin();
     recordingWarnings=[];
-    recordingContext={mode:automationRequest?.captureMode==='tab'?'authorized-tab':automationRequest?'prearmed-or-picker':'manual',scheduleId:automationRequest?.scheduleId || null,occurrenceKey:automationRequest?.occurrenceKey || null};
+    recordingContext={mode:automationRequest?.captureMode==='tab'?'authorized-tab':automationRequest?'prearmed-or-picker':'manual',scheduleId:automationRequest?.scheduleId || null,occurrenceKey:automationRequest?.occurrenceKey || null,sessionId:createRecordingId()};
     startBtn.disabled=true;
     recordingTitle=automationRequest?.title || $('recordingTitle').value || '';
+    recordingContext.title=recordingTitle || 'Manual recording';
     if(playbackURL){URL.revokeObjectURL(playbackURL);playbackURL=null;}
     showMode("live");
     detail.textContent = automationRequest?.captureMode==='tab'?"Checking authorized target and audio…":"Opening chooser…";
+
+    // Freeze monitoring preferences for this recording; later UI edits take effect next time.
+    const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+    const monitoring={silenceSeconds:normalizeSilenceSeconds(labAudioMonitor.silenceSeconds),shortWarningSeconds:normalizeShortWarningSeconds(labAudioMonitor.shortWarningSeconds),heartbeatMinutes:normalizeHeartbeatMinutes(labAudioMonitor.heartbeatMinutes)};
+    let audioSilenceCycle=0;
+    const audioState=({state,durationSeconds})=>{
+      if(mediaRecorder?.state!=='recording')return;
+      if(state==='silent')audioSilenceCycle++;
+      const event=state==='silent'?'audio_silence_prolonged':'audio_resumed';
+      const message=state==='silent'
+        ?'Captured audio quiet for '+durationSeconds+' seconds; recording continues. This does not prove the professor is absent.'
+        :'Captured audio resumed after '+durationSeconds+' seconds of quiet.';
+      captureEvidence(event,{...recordingContext,audioSilenceCycle,message}).catch(console.warn);
+    };
+    const audioWarning=message=>{
+      if(!recordingWarnings.includes(message))recordingWarnings.push(message);
+      detail.textContent=message;
+      captureEvidence('audio_warning',{...recordingContext,message}).catch(console.warn);
+    };
 
     // Fresh tab capture is separate from the manual/pre-armed provider.
     if(automationRequest?.captureMode==='tab'){
       if(armedStream)throw Error('Disarm the manual capture before using authorized tab capture');
       const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
       authorizedTargetId=prepared.targetTabId;
-      authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,onSilence:message=>{
-        if(!recordingWarnings.includes(message))recordingWarnings.push(message);
-        detail.textContent=message;captureEvidence('audio_warning',{message}).catch(console.warn);
-      }});
+      authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,
+        silenceSeconds:monitoring.silenceSeconds,shortWarningSeconds:monitoring.shortWarningSeconds,
+        onAudioState:audioState,onSilence:audioWarning});
       recordingContext.targetTabId=authorizedTargetId;
       recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;
       recordingContext.audioSilentAtStart=authorizedCapture.silentAtStart;
@@ -228,6 +255,12 @@ async function startRecording() {
     if(!stream.getVideoTracks().some(t=>t.readyState==='live'))throw Error('Capture has no live video track');
     if(automationRequest && !stream.getAudioTracks().some(t=>t.readyState==='live'))throw Error('Scheduled capture has no live audio track');
     if(!automationRequest && !$('includeAudio').checked){stream.getAudioTracks().forEach(track=>{stream.removeTrack(track);track.stop();});}
+    if(!authorizedCapture && stream.getAudioTracks().some(t=>t.readyState==='live')){
+      manualAudioMonitor=await inspectCapturedAudio(stream,{
+        silenceSeconds:monitoring.silenceSeconds,shortWarningSeconds:monitoring.shortWarningSeconds,
+        onAudioState:audioState,onSilence:audioWarning,restorePlayback:false
+      });
+    }
 
     mimeType = pickMimePreferMp4();
     fileExt = mimeType.includes("mp4") ? "mp4" : "webm";
@@ -271,6 +304,9 @@ async function startRecording() {
     mediaRecorder.start();
     if(recordingWarnings.length)detail.textContent='Recording — '+recordingWarnings.join(' ');
     captureEvidence('recording_started',{...recordingContext,tracks:stream.getTracks().map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
+    captureEvidence('audio_monitor_status',{...recordingContext,message:authorizedCapture||manualAudioMonitor
+      ?'Audio level monitoring active for captured tab/screen sound; microphone speech is not monitored unless it is part of captured audio.'
+      :'No captured audio track available; silence alerts are unavailable for this recording.'}).catch(console.warn);
     if(!stream.getAudioTracks().length){recordingWarnings.push('Video only: no shared audio track');detail.textContent=recordingWarnings[0];}
     const duration=automationRequest?.durationMinutes;
     if(duration)deadlineTimer=setTimeout(stopRecording,duration*60000);
@@ -291,23 +327,23 @@ async function startRecording() {
     startedAt = Date.now();
     clearInterval(recordingHeartbeatHandle);
     recordingHeartbeatHandle=null;
-    if(recordingContext?.scheduleId){
+    // One heartbeat every configured interval. Manual and scheduled captures share this.
+    if(monitoring.heartbeatMinutes>0){
       let heartbeatNumber=0;
+      const intervalMinutes=monitoring.heartbeatMinutes;
       recordingHeartbeatHandle=setInterval(()=>{
-        if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
+        if(mediaRecorder?.state!=='recording')return;
         const tracks=captureStream?.getTracks() || [];
         const videoLive=tracks.some(t=>t.kind==='video' && t.readyState==='live');
         const audioLive=tracks.some(t=>t.kind==='audio' && t.readyState==='live');
         if(!videoLive || !audioLive)return;
         heartbeatNumber++;
-        // Verify locally each minute; notify after minute 1, then every 5.
-        if(heartbeatNumber!==1 && heartbeatNumber%5!==0)return;
         captureEvidence('recording_heartbeat',{
           ...recordingContext,heartbeatNumber,
           elapsedMinutes:Math.floor((Date.now()-startedAt)/60000),
           message:'Recorder active with live audio and video tracks. File not yet saved.'
         }).catch(console.warn);
-      },60000);
+      },intervalMinutes*60000);
     }
     clearInterval(timerHandle);
     timerHandle = setInterval(() => {
@@ -319,6 +355,7 @@ async function startRecording() {
   } catch (err) {
     console.error(err);
     await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
+    await manualAudioMonitor?.close?.();manualAudioMonitor=null;
     captureStream?.getTracks().forEach(t=>t.stop());captureStream=null;
     armedStream=null;armedScheduleId=null;saveSession.cancel();
 
@@ -355,6 +392,7 @@ async function handleStop() {
   const stream = preview.srcObject;
   stream?.getTracks().forEach((t) => t.stop());
   await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
+  await manualAudioMonitor?.close?.();manualAudioMonitor=null;
   captureEvidence('recording_stopped',{...recordingContext,tracks:(stream?.getTracks() || []).map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
   preview.srcObject = null;
   captureStream=null;armedStream=null;armedScheduleId=null;

@@ -14,7 +14,7 @@ async function log(entry){
   try {
     const {automationSchedules=[]}=await chrome.storage.local.get('automationSchedules');
     const schedule=automationSchedules.find(item=>item.id===entry.scheduleId);
-    const notification={...entry,scheduleName:schedule?.title || entry.scheduleName || entry.scheduleId};
+    const notification={...entry,scheduleName:schedule?.title || entry.scheduleName || entry.title || entry.scheduleId};
     if(await telegram.enqueue(notification))void telegram.flush().catch(console.error);
   }catch(error){console.error('Could not queue Telegram notification:',error.message);}
 }
@@ -171,11 +171,12 @@ chrome.storage.onChanged.addListener((changes,area)=>{
     const old=new Set((changes.captureEvents.oldValue || []).map(event=>JSON.stringify(event)));
     for(const event of changes.captureEvents.newValue || []){
       if(old.has(JSON.stringify(event)))continue;
-      const labels={recording_heartbeat:'Recording is active.',recording_started:'MediaRecorder started.',capture_stopped:'Capture stopped. The file has not yet been saved.',saving:'Saving the finalized file; waiting for download verification.',saved:'Download completed and file verified.',save_failed:'Save failed; recording retained for retry.',audio_warning:'Audio warning.',capture_failed:'Capture startup failed.'};
-      if(labels[event.state])log({event:event.state,scheduleId:event.scheduleId,
+      const labels={audio_monitor_status:'Audio monitor status.',recording_heartbeat:'Recording is active.',recording_started:'MediaRecorder started.',capture_stopped:'Capture stopped. The file has not yet been saved.',saving:'Saving the finalized file; waiting for download verification.',saved:'Download completed and file verified.',save_failed:'Save failed; recording retained for retry.',audio_warning:'Audio warning.',audio_silence_prolonged:'Extended audio silence.',audio_resumed:'Audio resumed.',capture_failed:'Capture startup failed.'};
+      if(labels[event.state])log({event:event.state,scheduleId:event.scheduleId,sessionId:event.sessionId,title:event.title,
         level:/failed/.test(event.state)?'error':/warning/.test(event.state)?'warning':'info',
         occurrenceKey:event.occurrenceKey,
         heartbeatNumber:event.heartbeatNumber,
+        audioSilenceCycle:event.audioSilenceCycle,
         message:labels[event.state]+(event.elapsedMinutes!=null?' Elapsed: '+event.elapsedMinutes+' min.':'')+(event.message?' '+event.message:'')}).catch(console.error);
     }
   }
