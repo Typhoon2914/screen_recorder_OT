@@ -13,6 +13,7 @@ export function createActivityLog(api,{now=()=>new Date().toISOString()}={}){
       const {automationActivityLog=[]}=await api.storage.local.get('automationActivityLog');
       const entry={at:now(),level:['warning','error'].includes(event.level)?event.level:'info',
         event:safeLogText(event.event),scheduleId:safeLogText(event.scheduleId),
+        sessionId:safeLogText(event.sessionId),title:safeLogText(event.title),
         message:safeLogText(event.message)};
       for(const key of ['nextRetryAt','expiresAt'])if(Number.isFinite(Date.parse(event[key])))entry[key]=event[key];
       await api.storage.local.set({automationActivityLog:[...automationActivityLog,entry].slice(-500)});

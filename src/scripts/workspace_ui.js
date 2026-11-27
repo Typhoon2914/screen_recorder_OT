@@ -20,24 +20,42 @@ for(const tab of tabs){
 const native=$('nativeSettings');native.hidden=false;$('nativeSettingsHost').append(native);
 let entries=[];
 let scheduleNames={};
+let visibleEntries=[];
+const sessionFilter=$('logSessionFilter');
+sessionFilter.addEventListener('change',()=>renderVisibleLogs());
 const entryText=e=>`${new Date(e.at).toLocaleString()} · ${e.level.toUpperCase()} · ${scheduleNames[e.scheduleId] || e.scheduleId?.slice(0,8) || 'Recorder'} · ${e.message}${e.nextRetryAt?' Next check: '+new Date(e.nextRetryAt).toLocaleTimeString():''}${e.expiresAt?' Retry window ends: '+new Date(e.expiresAt).toLocaleTimeString():''}`;
+function renderVisibleLogs(){
+  const selected=sessionFilter.value;
+  visibleEntries=selected==='all'?entries:entries.filter(e=>e.sessionId===selected);
+  $('activityLog').replaceChildren(...visibleEntries.map(e=>{
+    const row=document.createElement('li');row.className='log-'+e.level;row.textContent=entryText(e);return row;
+  }));
+  if(!visibleEntries.length){const row=document.createElement('li');row.textContent='No events in this recording.';$('activityLog').append(row);}
+  if($('followLogs').checked)$('activityLog').scrollTop=$('activityLog').scrollHeight;
+}
 async function renderLogs(){
   const {automationActivityLog=[]}=await chrome.storage.local.get('automationActivityLog');
   const {automationSchedules=[]}=await chrome.storage.local.get('automationSchedules');
   scheduleNames=Object.fromEntries(automationSchedules.map(s=>[s.id,safeLogText(s.title || s.id)]));
-  entries=automationActivityLog.map(e=>({...e,message:safeLogText(e.message),scheduleId:safeLogText(e.scheduleId)}));
-  $('activityLog').replaceChildren(...entries.map(e=>{
-    const row=document.createElement('li');row.className='log-'+e.level;row.textContent=entryText(e);return row;
-  }));
-  if(!entries.length){const row=document.createElement('li');row.textContent='No activity yet. Scheduled checks and recording events will appear here.';$('activityLog').append(row);}
-  if($('followLogs').checked)$('activityLog').scrollTop=$('activityLog').scrollHeight;
+  entries=automationActivityLog.map(e=>({...e,message:safeLogText(e.message),scheduleId:safeLogText(e.scheduleId),sessionId:safeLogText(e.sessionId),title:safeLogText(e.title)}));
+  const old=sessionFilter.value;
+  const sessions=new Map();
+  for(const e of entries){
+    if(e.sessionId && !sessions.has(e.sessionId))sessions.set(e.sessionId,{title:e.title || scheduleNames[e.scheduleId] || 'Recording',at:e.at});
+  }
+  sessionFilter.replaceChildren(new Option('All activity','all'));
+  for(const [id,meta] of [...sessions].reverse()){
+    sessionFilter.add(new Option(meta.title+' · '+new Date(meta.at).toLocaleString(),id));
+  }
+  sessionFilter.value=[...sessions.keys()].includes(old)?old:(old==='all'?'all':(sessions.size?[...sessions.keys()].at(-1):'all'));
+  renderVisibleLogs();
 }
 $('copyLogs').onclick=async()=>{
-  try{await navigator.clipboard.writeText(entries.map(entryText).join('\n'));$('logStatus').textContent='Logs copied.';}
+  try{await navigator.clipboard.writeText(visibleEntries.map(entryText).join('\n'));$('logStatus').textContent='Logs copied.';}
   catch{$('logStatus').textContent='Clipboard unavailable. Use Export logs instead.';}
 };
 $('exportLogs').onclick=async()=>{
-  const url=URL.createObjectURL(new Blob([JSON.stringify({version:1,events:entries},null,2)],{type:'application/json'}));
+  const url=URL.createObjectURL(new Blob([JSON.stringify({version:2,events:visibleEntries},null,2)],{type:'application/json'}));
   try{await chrome.downloads.download({url,filename:'screen-recorder-logs-'+Date.now()+'.json',saveAs:true});$('logStatus').textContent='Log export requested. Check Chrome downloads.';}
   catch(error){$('logStatus').textContent=error.message;}
   finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}

@@ -20,14 +20,14 @@ export function assessStartupAudio(levels,thresholdDbfs=-70){
 
 // Live source analysis, not a codec/track-presence proxy. No browser flags or
 // forced source playback: suspended source contexts remain observable failures.
-export async function inspectCapturedAudio(stream,{onSilence=()=>{},onAudioState=()=>{},silenceSeconds=120}={}){
+export async function inspectCapturedAudio(stream,{onSilence=()=>{},onAudioState=()=>{},silenceSeconds=120,restorePlayback=true}={}){
   const context=new AudioContext(),source=context.createMediaStreamSource(stream),analyser=context.createAnalyser();
   let timer;
   const close=async()=>{clearInterval(timer);source.disconnect();analyser.disconnect();await context.close();};
   try{
     source.connect(analyser);
     // tabCapture suppresses source playback; restore it while monitoring.
-    source.connect(context.destination);
+    if(restorePlayback)source.connect(context.destination);
     let resumeTimer;
     try{await Promise.race([context.resume(),new Promise((_,reject)=>{resumeTimer=setTimeout(()=>reject(Error('Audio monitor resume timed out; readiness unknown')),3000);})]);}
     finally{clearTimeout(resumeTimer);}

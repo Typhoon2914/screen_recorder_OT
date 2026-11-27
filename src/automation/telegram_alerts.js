@@ -49,12 +49,13 @@ export function alertForEvent(entry) {
   };
   const spec=descriptions[entry.event];
   if(!spec)return null;
-  if(!entry.scheduleId && !['setup_authorization_failed','target_grant_lost','scheduler_failed'].includes(entry.event))return null;
+  if(!entry.scheduleId && !entry.sessionId && !['setup_authorization_failed','target_grant_lost','scheduler_failed'].includes(entry.event))return null;
   const [severity,title]=spec;
-  const label=safeLogText(entry.scheduleName || entry.scheduleId || 'Recorder');
+  const label=safeLogText(entry.scheduleName || entry.title || entry.scheduleId || 'Manual recording');
   const details=safeLogText(entry.message || '');
   return {severity,event:entry.event,scheduleId:String(entry.scheduleId||''),occurrenceKey:String(entry.occurrenceKey||''),
-    message:(`Screen Recorder · ${severity.toUpperCase()}\n${title}\nLecture: ${label}${details?'\n'+details:''}`).slice(0,1500)};
+    sessionId:String(entry.sessionId||''),
+    message:(`Screen Recorder · ${severity.toUpperCase()}\n${title}\nRecording: ${label}${details?'\n'+details:''}`).slice(0,1500)};
 }
 
 export function createTelegramAlerts({storage,fetchImpl=fetch,now=()=>Date.now()}={}) {
@@ -79,7 +80,7 @@ export function createTelegramAlerts({storage,fetchImpl=fetch,now=()=>Date.now()
       const data=await storage.get(['telegramAlertOutbox','telegramAlertDeliveredKeys']);
       const queue=data.telegramAlertOutbox || [],delivered=data.telegramAlertDeliveredKeys || [];
       const windowId=['attempt_failed','audio_warning','overlap_deferred','scheduler_failed'].includes(alert.event)?Math.floor(now()/600000):'once';
-      const key=[alert.event,alert.scheduleId,alert.occurrenceKey||Math.floor(now()/3600000),
+      const key=[alert.event,alert.scheduleId||alert.sessionId,alert.occurrenceKey||alert.sessionId||Math.floor(now()/3600000),
         alert.event==='recording_heartbeat' ? String(entry.heartbeatNumber || windowId) :
         ['audio_silence_prolonged','audio_resumed'].includes(alert.event) ? String(entry.audioSilenceCycle || 1) : windowId].join('|');
       if(delivered.includes(key)||queue.some(x=>x.key===key))return false;

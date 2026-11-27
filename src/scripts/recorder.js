@@ -3,7 +3,7 @@ import { createRecorderBridge } from "../automation/recorder_bridge.js";
 import { recordingFilename, createSaveSession, createVerifiedSaver } from "../automation/recording_safety.js";
 import { vault } from "./recording_vault.js";
 import {recorderOptions} from '../automation/recording_options.js';
-import {acquireAuthorizedTab} from '../automation/tab_capture.js';
+import {acquireAuthorizedTab,inspectCapturedAudio} from '../automation/tab_capture.js';
 import './tab_capture_ui.js';
 import "./schedule_ui.js";
 import "./workspace_ui.js";
@@ -53,9 +53,16 @@ let recordingWarnings=[];
 let authorizedCapture=null;
 let authorizedTargetId=null;
 let recordingContext=null;
-async function captureEvidence(state,fields={}){
-  const {captureEvents=[]}=await chrome.storage.local.get('captureEvents');
-  await chrome.storage.local.set({captureEvents:[...captureEvents,{at:new Date().toISOString(),state,...fields}].slice(-100)});
+let manualAudioMonitor=null;
+let evidenceQueue=Promise.resolve();
+function captureEvidence(state,fields={}){
+  const item={at:new Date().toISOString(),state,...fields};
+  const op=evidenceQueue.then(async()=>{
+    const {captureEvents=[]}=await chrome.storage.local.get('captureEvents');
+    await chrome.storage.local.set({captureEvents:[...captureEvents,item].slice(-200)});
+  });
+  evidenceQueue=op.catch(()=>{});
+  return op;
 }
 async function captureRequest(type,request){
   const result=await chrome.runtime.sendMessage({type,scheduleId:request.scheduleId,occurrenceKey:request.occurrenceKey});
@@ -200,12 +207,30 @@ async function startRecording() {
   try {
     saveSession.begin();
     recordingWarnings=[];
-    recordingContext={mode:automationRequest?.captureMode==='tab'?'authorized-tab':automationRequest?'prearmed-or-picker':'manual',scheduleId:automationRequest?.scheduleId || null,occurrenceKey:automationRequest?.occurrenceKey || null};
+    recordingContext={mode:automationRequest?.captureMode==='tab'?'authorized-tab':automationRequest?'prearmed-or-picker':'manual',scheduleId:automationRequest?.scheduleId || null,occurrenceKey:automationRequest?.occurrenceKey || null,sessionId:createRecordingId()};
     startBtn.disabled=true;
     recordingTitle=automationRequest?.title || $('recordingTitle').value || '';
+    recordingContext.title=recordingTitle || 'Manual recording';
     if(playbackURL){URL.revokeObjectURL(playbackURL);playbackURL=null;}
     showMode("live");
     detail.textContent = automationRequest?.captureMode==='tab'?"Checking authorized target and audio…":"Opening chooser…";
+
+    // Monitor actual audio in both manual and scheduled captures.
+    let audioSilenceCycle=0;
+    const audioState=({state,durationSeconds})=>{
+      if(mediaRecorder?.state!=='recording')return;
+      if(state==='silent')audioSilenceCycle++;
+      const event=state==='silent'?'audio_silence_prolonged':'audio_resumed';
+      const message=state==='silent'
+        ?'Captured audio quiet for '+durationSeconds+' seconds; recording continues. This does not prove the professor is absent.'
+        :'Captured audio resumed after '+durationSeconds+' seconds of quiet.';
+      captureEvidence(event,{...recordingContext,audioSilenceCycle,message}).catch(console.warn);
+    };
+    const audioWarning=message=>{
+      if(!recordingWarnings.includes(message))recordingWarnings.push(message);
+      detail.textContent=message;
+      captureEvidence('audio_warning',{...recordingContext,message}).catch(console.warn);
+    };
 
     // Fresh tab capture is separate from the manual/pre-armed provider.
     if(automationRequest?.captureMode==='tab'){
@@ -213,21 +238,9 @@ async function startRecording() {
       const prepared=await captureRequest('TAB_CAPTURE_PREPARE',automationRequest);
       authorizedTargetId=prepared.targetTabId;
       const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
-      let audioSilenceCycle=0;
       authorizedCapture=await acquireAuthorizedTab({streamId:prepared.streamId,
         silenceSeconds:labAudioMonitor.silenceSeconds,
-        onAudioState:({state,durationSeconds})=>{
-          if(!recordingContext?.scheduleId || mediaRecorder?.state!=='recording')return;
-          if(state==='silent')audioSilenceCycle++;
-          const event=state==='silent'?'audio_silence_prolonged':'audio_resumed';
-          const message=state==='silent'
-            ?'Captured meeting audio has been quiet for '+durationSeconds+' seconds. Recording continues; this does not prove the professor is absent.'
-            :'Captured meeting audio resumed after '+durationSeconds+' seconds of quiet.';
-          captureEvidence(event,{...recordingContext,audioSilenceCycle,message}).catch(console.warn);
-        },onSilence:message=>{
-        if(!recordingWarnings.includes(message))recordingWarnings.push(message);
-        detail.textContent=message;captureEvidence('audio_warning',{...recordingContext,message}).catch(console.warn);
-      }});
+        onAudioState:audioState,onSilence:audioWarning});
       recordingContext.targetTabId=authorizedTargetId;
       recordingContext.audioPeakDbfs=authorizedCapture.peakDbfs;
       recordingContext.audioSilentAtStart=authorizedCapture.silentAtStart;
@@ -240,6 +253,13 @@ async function startRecording() {
     if(!stream.getVideoTracks().some(t=>t.readyState==='live'))throw Error('Capture has no live video track');
     if(automationRequest && !stream.getAudioTracks().some(t=>t.readyState==='live'))throw Error('Scheduled capture has no live audio track');
     if(!automationRequest && !$('includeAudio').checked){stream.getAudioTracks().forEach(track=>{stream.removeTrack(track);track.stop();});}
+    if(!authorizedCapture && stream.getAudioTracks().some(t=>t.readyState==='live')){
+      const {labAudioMonitor={}}=await chrome.storage.local.get('labAudioMonitor');
+      manualAudioMonitor=await inspectCapturedAudio(stream,{
+        silenceSeconds:labAudioMonitor.silenceSeconds,
+        onAudioState:audioState,onSilence:audioWarning,restorePlayback:false
+      });
+    }
 
     mimeType = pickMimePreferMp4();
     fileExt = mimeType.includes("mp4") ? "mp4" : "webm";
@@ -331,6 +351,7 @@ async function startRecording() {
   } catch (err) {
     console.error(err);
     await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
+    await manualAudioMonitor?.close?.();manualAudioMonitor=null;
     captureStream?.getTracks().forEach(t=>t.stop());captureStream=null;
     armedStream=null;armedScheduleId=null;saveSession.cancel();
 
@@ -367,6 +388,7 @@ async function handleStop() {
   const stream = preview.srcObject;
   stream?.getTracks().forEach((t) => t.stop());
   await authorizedCapture?.release();authorizedCapture=null;authorizedTargetId=null;
+  await manualAudioMonitor?.close?.();manualAudioMonitor=null;
   captureEvidence('recording_stopped',{...recordingContext,tracks:(stream?.getTracks() || []).map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
   preview.srcObject = null;
   captureStream=null;armedStream=null;armedScheduleId=null;

@@ -14,7 +14,7 @@
       <div class="brand">
         <img class="badge" src="../icons/icon48.png" alt="Logo" />
         <div>
-          <div class="h1">Screen Recorder OT · LAB <span style="color:#ffca62">v1.2.0-lab.2</span></div><div class="h2">Experimental test build · not the stable recorder</div>
+          <div class="h1">Screen Recorder OT · LAB <span style="color:#ffca62">v1.2.0-lab.3</span></div><div class="h2">Experimental test build · not the stable recorder</div>
         </div>
       </div>
 
@@ -30,7 +30,7 @@
       <button class="btn" role="tab" id="tab-history" aria-controls="historyPanel" aria-selected="false" tabindex="-1">History</button>
       <button class="btn" role="tab" id="tab-logs" aria-controls="logsPanel" aria-selected="false" tabindex="-1">Logs</button>
     </nav>
-    <p class="workspaceNotice"><strong>EXPERIMENTAL BUILD · v1.2.0-lab.2</strong> — Keep Chrome, this recorder and the authorized Teams tab open, and the computer awake.</p>
+    <p class="workspaceNotice"><strong>EXPERIMENTAL BUILD · v1.2.0-lab.3</strong> — Keep Chrome, this recorder and the authorized Teams tab open, and the computer awake.</p>
     <main class="grid" id="recordPanel" role="tabpanel" aria-labelledby="tab-record" hidden>
       <section class="panel">
         <div class="actions">
@@ -155,10 +155,11 @@
     </section>
     <section class="panel" id="logsPanel" role="tabpanel" aria-labelledby="tab-logs" hidden>
       <h2>Live activity log</h2>
-      <p>Latest 500 events, updated while this page is open. Retry times are estimates for the next scheduler check, not exact-second promises.</p>
+      <p>Latest 500 events are retained locally. Select a recording to number its entries from 1; older entries are not deleted. Retry times are estimates.</p>
       <div class="actions">
         <button class="btn" id="copyLogs" type="button">Copy logs</button>
         <button class="btn" id="exportLogs" type="button">Export logs</button>
+        <label>View <select id="logSessionFilter"><option value="all">All activity</option></select></label>
         <label><input type="checkbox" id="followLogs" checked /> Follow latest</label>
       </div>
       <p id="logStatus" role="status"></p>
