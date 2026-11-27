@@ -26,7 +26,8 @@ sessionFilter.addEventListener('change',()=>renderVisibleLogs());
 const entryText=e=>`${new Date(e.at).toLocaleString()} · ${e.level.toUpperCase()} · ${scheduleNames[e.scheduleId] || e.scheduleId?.slice(0,8) || 'Recorder'} · ${e.message}${e.nextRetryAt?' Next check: '+new Date(e.nextRetryAt).toLocaleTimeString():''}${e.expiresAt?' Retry window ends: '+new Date(e.expiresAt).toLocaleTimeString():''}`;
 function renderVisibleLogs(){
   const selected=sessionFilter.value;
-  visibleEntries=selected==='all'?entries:entries.filter(e=>e.sessionId===selected);
+  const latest=[...entries].reverse().find(e=>e.sessionId)?.sessionId;
+  visibleEntries=selected==='all'?entries:entries.filter(e=>e.sessionId===(selected==='latest'?latest:selected));
   $('activityLog').replaceChildren(...visibleEntries.map(e=>{
     const row=document.createElement('li');row.className='log-'+e.level;row.textContent=entryText(e);return row;
   }));
@@ -43,11 +44,11 @@ async function renderLogs(){
   for(const e of entries){
     if(e.sessionId && !sessions.has(e.sessionId))sessions.set(e.sessionId,{title:e.title || scheduleNames[e.scheduleId] || 'Recording',at:e.at});
   }
-  sessionFilter.replaceChildren(new Option('All activity','all'));
+  sessionFilter.replaceChildren(new Option('Latest recording','latest'),new Option('All activity','all'));
   for(const [id,meta] of [...sessions].reverse()){
     sessionFilter.add(new Option(meta.title+' · '+new Date(meta.at).toLocaleString(),id));
   }
-  sessionFilter.value=[...sessions.keys()].includes(old)?old:(old==='all'?'all':(sessions.size?[...sessions.keys()].at(-1):'all'));
+  sessionFilter.value=[...sessions.keys()].includes(old)?old:(old==='all'?'all':'latest');
   renderVisibleLogs();
 }
 $('copyLogs').onclick=async()=>{

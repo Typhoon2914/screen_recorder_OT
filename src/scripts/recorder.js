@@ -303,6 +303,9 @@ async function startRecording() {
     mediaRecorder.start();
     if(recordingWarnings.length)detail.textContent='Recording — '+recordingWarnings.join(' ');
     captureEvidence('recording_started',{...recordingContext,tracks:stream.getTracks().map(t=>({kind:t.kind,state:t.readyState}))}).catch(console.warn);
+    captureEvidence('audio_monitor_status',{...recordingContext,message:authorizedCapture||manualAudioMonitor
+      ?'Audio level monitoring active for captured tab/screen sound; microphone speech is not monitored unless it is part of captured audio.'
+      :'No captured audio track available; silence alerts are unavailable for this recording.'}).catch(console.warn);
     if(!stream.getAudioTracks().length){recordingWarnings.push('Video only: no shared audio track');detail.textContent=recordingWarnings[0];}
     const duration=automationRequest?.durationMinutes;
     if(duration)deadlineTimer=setTimeout(stopRecording,duration*60000);
